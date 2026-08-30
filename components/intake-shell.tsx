@@ -6,8 +6,12 @@ import { Q1Age } from '@/components/questions/q1-age';
 import { Q2Duration } from '@/components/questions/q2-duration';
 import { Q3Family } from '@/components/questions/q3-family';
 import { Q4Pattern } from '@/components/questions/q4-pattern';
+import { Q5Conditions } from '@/components/questions/q5-conditions';
+import { Q67Hormonal } from '@/components/questions/q67-hormonal';
+import { Q8Acne } from '@/components/questions/q8-acne';
+import { Q9Hair } from '@/components/questions/q9-hair';
 
-const CARDS = [Q1Age, Q2Duration, Q3Family, Q4Pattern];
+const CARDS = [Q1Age, Q2Duration, Q3Family, Q4Pattern, Q5Conditions, Q67Hormonal, Q8Acne, Q9Hair];
 
 type Direction = 'forward' | 'back';
 

@@ -273,11 +273,3 @@ export const useIntakeStore = create<IntakeStore>()(
   )
 );
 
-// ---------------------------------------------------------------------------
-// Selectors — pass to useIntakeStore(selector) in components
-// ---------------------------------------------------------------------------
-
-export const filledFormSelector = (s: IntakeStore) => s.form;
-export const provenanceSelector = (s: IntakeStore) => s.provenance;
-export const completenessSelector = (s: IntakeStore) =>
-  computeCompleteness(s.form, s.provenance);
