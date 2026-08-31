@@ -1,6 +1,7 @@
 'use client';
 
 import { useIntakeStore } from '@/lib/intake-store';
+import { useStepLabel } from '@/components/step-context';
 import type { DiagnosedConditionOption } from '@/lib/types';
 
 const NONE = 'None' as const satisfies DiagnosedConditionOption;
@@ -17,6 +18,7 @@ const OPTIONS: DiagnosedConditionOption[] = [
 export function Q5Conditions() {
   const selected = useIntakeStore(s => s.form.diagnosed_conditions);
   const setField = useIntakeStore(s => s.setField);
+  const stepLabel = useStepLabel();
 
   function toggle(value: DiagnosedConditionOption) {
     let next: DiagnosedConditionOption[];
@@ -37,7 +39,7 @@ export function Q5Conditions() {
     <div className="flex flex-col min-h-full px-4 py-8 bg-slate-50">
       <div className="max-w-sm mx-auto w-full flex flex-col gap-6">
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium tracking-wide text-sky-600">Question 5 of 16</p>
+          <p className="text-sm font-medium tracking-wide text-sky-600">{stepLabel}</p>
           <h2
             className="text-xl font-semibold text-slate-800 leading-snug"
             style={{ fontFamily: 'var(--font-outfit), system-ui, sans-serif' }}

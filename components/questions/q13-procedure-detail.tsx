@@ -1,6 +1,7 @@
 'use client';
 
 import { useIntakeStore } from '@/lib/intake-store';
+import { useStepLabel } from '@/components/step-context';
 import type { Procedures, ProcedureSessionsOption } from '@/lib/types';
 
 const SESSIONS_OPTIONS: ProcedureSessionsOption[] = ['1-3', '4-6', '>6'];
@@ -18,7 +19,7 @@ export function makeQ13ProcedureDetail(row: keyof Procedures, label: string) {
       <div className="flex flex-col min-h-full px-4 py-8 bg-slate-50">
         <div className="max-w-sm mx-auto w-full flex flex-col gap-6">
           <div className="flex flex-col gap-3">
-            <p className="text-sm font-medium tracking-wide text-sky-600">Question 13 of 16 · Procedures</p>
+            <p className="text-sm font-medium tracking-wide text-sky-600">{useStepLabel()}</p>
             <h2
               className="text-xl font-semibold text-slate-800 leading-snug"
               style={{ fontFamily: 'var(--font-outfit), system-ui, sans-serif' }}

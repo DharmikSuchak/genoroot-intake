@@ -108,10 +108,11 @@ Extract ONLY the fields listed below, and ONLY when the patient's own words give
 
 Fields:
 
-1. age_hair_loss_began — a whole number between ${MIN_AGE} and ${MAX_AGE}. Patients very often state their CURRENT age rather than the exact age their hair loss began — don't omit the field just because of that ambiguity:
-   - If they clearly tie the age to when the hair loss started (e.g. "it started when I was 25", "began around 30"), that's a confident onset age — confidence around 0.9.
-   - If they mention an age at all while describing their hair loss but don't make clear whether it's onset or current (e.g. "I'm 30", "my age is 30"), still include your best estimate using that age — confidence around 0.6, since it's more likely their current age than the true onset age.
-   Only omit this field if no age was mentioned anywhere in the context of describing their hair loss.
+1. age_hair_loss_began — a whole number between ${MIN_AGE} and ${MAX_AGE}. **IMPORTANT: if the patient mentions ANY age or number that could be their age, you MUST include this field — never skip it.**
+   - If they clearly tie the age to when the hair loss started (e.g. "it started when I was 25", "began around 30", "25 saal se hair loss hai"), confidence should be 0.9.
+   - If they state their current age in any way (e.g. "I'm 30", "my age is 30", "meri age 56 hai", "I am 42 years old", "main 30 ka hoon"), you MUST still include this field with that age as the value and confidence 0.55. This is critical — a current age is valuable data even if it's not the exact onset age.
+   - If they mention any number between ${MIN_AGE} and ${MAX_AGE} that could plausibly be an age, include it with confidence 0.5.
+   The ONLY reason to omit this field is if absolutely no age or age-like number appears anywhere in the transcript.
 
 2. duration — exactly one of: ${JSON.stringify(DURATION_OPTIONS)} — how long the hair loss has been going on.
 

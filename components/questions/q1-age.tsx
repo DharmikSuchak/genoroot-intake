@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useIntakeStore } from '@/lib/intake-store';
+import { useStepLabel } from '@/components/step-context';
 
 const MIN = 5;
 const MAX = 85;
@@ -25,6 +26,7 @@ function indexForScrollTop(scrollTop: number) {
 export function Q1Age() {
   const stored = useIntakeStore(s => s.form.age_hair_loss_began);
   const setField = useIntakeStore(s => s.setField);
+  const stepLabel = useStepLabel();
 
   const [value, setValue] = useState(stored ?? DEFAULT);
   const [touched, setTouched] = useState(stored !== null);
@@ -97,7 +99,7 @@ export function Q1Age() {
     <div className="flex flex-col min-h-full py-8 bg-slate-50">
       {/* Question header — padded */}
       <div className="px-4 flex flex-col gap-3 max-w-sm mx-auto w-full">
-        <p className="text-sm font-medium tracking-wide text-sky-600">Question 1 of 16</p>
+        <p className="text-sm font-medium tracking-wide text-sky-600">{stepLabel}</p>
         <h2
           className="text-xl font-semibold text-slate-800 leading-snug"
           style={{ fontFamily: 'var(--font-outfit), system-ui, sans-serif' }}

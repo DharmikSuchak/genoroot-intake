@@ -175,6 +175,8 @@ export async function POST(req: NextRequest) {
     }
 
     const fields = sanitizeExtraction(rawJson);
+    console.log('[extract] raw:', JSON.stringify(rawJson));
+    console.log('[extract] sanitized:', JSON.stringify(fields));
     return NextResponse.json({ fields });
   } catch (err) {
     console.error('[extract] Unexpected error calling Gemini:', err);

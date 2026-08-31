@@ -1,6 +1,7 @@
 'use client';
 
 import { useIntakeStore } from '@/lib/intake-store';
+import { useStepLabel } from '@/components/step-context';
 import type { MenstrualCycleOption, PregnancyRelatedOption } from '@/lib/types';
 
 type Q6Value = Exclude<MenstrualCycleOption, 'Not applicable'>;
@@ -21,6 +22,7 @@ export function Q67Hormonal() {
   const menstrual = useIntakeStore(s => s.form.menstrual_cycle);
   const pregnancy = useIntakeStore(s => s.form.pregnancy_related);
   const setField = useIntakeStore(s => s.setField);
+  const stepLabel = useStepLabel();
 
   const doesNotApply =
     menstrual === 'Not applicable' && pregnancy === 'Not applicable';
@@ -47,7 +49,7 @@ export function Q67Hormonal() {
     <div className="flex flex-col min-h-full px-4 py-8 bg-slate-50">
       <div className="max-w-sm mx-auto w-full flex flex-col gap-6">
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium tracking-wide text-sky-600">Questions 6–7 of 16</p>
+          <p className="text-sm font-medium tracking-wide text-sky-600">{stepLabel}</p>
           <h2
             className="text-xl font-semibold text-slate-800 leading-snug"
             style={{ fontFamily: 'var(--font-outfit), system-ui, sans-serif' }}

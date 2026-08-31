@@ -1,6 +1,7 @@
 'use client';
 
 import { useIntakeStore } from '@/lib/intake-store';
+import { useStepLabel } from '@/components/step-context';
 import type { PatternOption } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -154,6 +155,7 @@ const PATTERNS: { value: PatternOption; label: string; Svg: React.FC }[] = [
 export function Q4Pattern() {
   const selected = useIntakeStore(s => s.form.pattern);
   const setField = useIntakeStore(s => s.setField);
+  const stepLabel = useStepLabel();
 
   function toggle(value: PatternOption) {
     const next = selected.includes(value)
@@ -166,7 +168,7 @@ export function Q4Pattern() {
     <div className="flex flex-col min-h-full bg-slate-50">
       <div className="px-4 pt-8 pb-4 max-w-sm mx-auto w-full">
         <div className="flex flex-col gap-3 mb-6">
-          <p className="text-sm font-medium tracking-wide text-sky-600">Question 4 of 16</p>
+          <p className="text-sm font-medium tracking-wide text-sky-600">{stepLabel}</p>
           <h2
             className="text-xl font-semibold text-slate-800 leading-snug"
             style={{ fontFamily: 'var(--font-outfit), system-ui, sans-serif' }}

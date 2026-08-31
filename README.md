@@ -92,24 +92,70 @@ automated test suite.
 
 ## With one more week
 
-I'd add a product-shelf photo. The patient photographs their bathroom
-shelf, and a vision model maps the bottles onto Q12's five rows, turning
-"which products have you used" into a camera instead of a checklist.
+The next week would go toward two things: taking effort off the patient
+and making correctness something I can actually measure. Everything below
+is ordered by how much it moves those two needles.
 
-I'd also build out full Hindi and Gujarati UI, with the language inferred
-from the patient's first spoken sentence instead of asked upfront. A
-Gujarat clinic serves patients who'd genuinely rather read it in their own
-language.
+### Product capture
 
-I'd add an automated eval harness: synthetic transcripts diffed against
-expected JSON, so accuracy is a number instead of a claim.
+The patient takes a photo of the products they currently use. Bottles,
+tubes, whatever they've got. A vision model identifies likely matches and
+maps them onto Q12's five treatment/product rows. The patient reviews and
+confirms what was detected before anything gets saved. The whole point is
+to replace a five-row checklist with a single camera tap, not to bolt on
+AI for its own sake. A wrong auto-fill that the patient doesn't catch is
+worse than letting them pick manually, so the confirmation step is
+non-negotiable.
 
-Pincode-based hard-water inference for Q11.
+### Automated evaluation
 
-A "not sure" option on questions where a patient might genuinely not know
-the answer, so the form doesn't force false certainty and the doctor sees
-the uncertainty instead of a guess.
+Right now I check correctness manually against a known patient profile.
+That doesn't scale. I'd build a synthetic-patient test harness with a set
+of scripted transcripts and tap sequences, each paired with an expected
+JSON output. The harness feeds each scenario through the full intake,
+covering voice extraction, conditional paths, inferred fields, and mutual
+exclusions, then diffs the resulting sixteen-field JSON against the
+expected one. The output is a pass/fail table and a numeric accuracy
+score. The goal is to turn "the intake works" into a measurable claim
+instead of a manual one.
 
-And I'd rebuild Q10 as a six-month timeline the patient scrubs through,
-rather than a checklist. Triggers are easier to recall against a timeline
-than to pull from a list.
+### Q11 rapid-fire interaction
+
+Q11 is currently a table covering smoking, alcohol, hard water, wash
+frequency, heating tools, and salon treatments. Tables are dense, and
+that density is exactly what makes paper forms feel like paperwork. I'd
+break it into a rapid-fire sequence of small, focused questions. One
+question at a time, one tap per answer. "Do you smoke?" then Yes or No.
+"How often do you wash your hair?" then Daily, Alternate days, or Weekly.
+Follow-ups only show up when they matter. Smoking severity appears only
+after "Yes", and salon-treatment details appear only after "Yes". The
+structured output stays the same because the schema doesn't change, just
+the way the patient interacts with it. This cuts cognitive load and turns
+a table-heavy question into something that feels more like a short
+conversation. It's a UX improvement, not an AI feature.
+
+### Six-month memory timeline
+
+Q10 asks about triggers in the last six months, things like major stress,
+illness, surgery, weight loss, or environmental changes. A checklist
+works, but a visual timeline works better as a memory aid. Scrolling
+through the last six months and dropping events onto it helps patients
+recall things they'd otherwise forget, like a fever in March or a move
+in May. The final answer still maps to Q10's required structured values.
+The timeline is a recall tool, not a data-model change.
+
+### Multilingual interaction and uncertainty
+
+Language can be inferred from the patient's first spoken response instead
+of forcing a language-selection screen upfront. Hindi and Gujarati are the
+obvious first additions for a Gujarat-based clinic, and the underlying
+structured data stays language-neutral regardless. I wouldn't overclaim
+translation quality here. This needs real patient testing, not just a
+translation pass.
+
+Separately, I'd add a "Not sure" option on questions where the patient
+genuinely might not know the answer. In a medical intake, a truthful
+unknown is more useful than fabricated certainty. Making uncertainty a
+first-class value that the doctor can see, rather than something the form
+silently drops, means patients stop guessing and doctors know exactly
+where to follow up.
