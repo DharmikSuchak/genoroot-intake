@@ -2,25 +2,29 @@
 
 import { useIntakeStore } from '@/lib/intake-store';
 
-export function Q11Alcohol() {
-  const value = useIntakeStore(s => s.form.habits.alcohol);
-  const setHabit = useIntakeStore(s => s.setHabit);
+export function Q16Consent() {
+  const value = useIntakeStore(s => s.form.consent);
+  const setField = useIntakeStore(s => s.setField);
 
   function tap(answer: boolean) {
-    setHabit('alcohol', value === answer ? null : answer, 'tapped');
+    setField('consent', value === answer ? null : answer, 'tapped');
   }
 
   return (
     <div className="flex flex-col min-h-full px-4 py-8 bg-slate-50">
       <div className="max-w-sm mx-auto w-full flex flex-col gap-6">
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium tracking-wide text-sky-600">Question 11 of 16 · Habits</p>
+          <p className="text-sm font-medium tracking-wide text-sky-600">Question 16 of 16</p>
           <h2
             className="text-xl font-semibold text-slate-800 leading-snug"
             style={{ fontFamily: 'var(--font-outfit), system-ui, sans-serif' }}
           >
-            Do you drink alcohol regularly?
+            Are you okay with us collecting your sample and running a genetic analysis on it?
           </h2>
+          <p className="text-base text-slate-500">
+            Your sample is used only to help your doctor understand your hair loss. It isn't
+            shared outside this clinic.
+          </p>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -47,7 +51,7 @@ export function Q11Alcohol() {
                   className="text-base font-medium"
                   style={{ color: isSelected ? '#0369a1' : '#334155' }}
                 >
-                  {answer ? 'Yes' : 'No'}
+                  {answer ? 'Yes, I agree' : 'No, I don\'t agree'}
                 </span>
               </button>
             );

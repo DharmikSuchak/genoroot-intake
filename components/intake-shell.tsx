@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useIntakeStore, computeCompleteness } from '@/lib/intake-store';
+import { CardScrollArea } from '@/components/card-scroll-area';
 import { Q1Age } from '@/components/questions/q1-age';
 import { Q2Duration } from '@/components/questions/q2-duration';
 import { Q3Family } from '@/components/questions/q3-family';
@@ -27,6 +28,9 @@ import { Q13ProceduresWhich } from '@/components/questions/q13-procedures-which'
 import { makeQ13ProcedureDetail } from '@/components/questions/q13-procedure-detail';
 import { Q14SideEffects } from '@/components/questions/q14-side-effects';
 import { Q14Describe } from '@/components/questions/q14-describe';
+import { Q15SampleType } from '@/components/questions/q15-sample-type';
+import { Q16Consent } from '@/components/questions/q16-consent';
+import { CompletionScreen } from '@/components/completion-screen';
 import type { Products, Procedures, IntakeForm } from '@/lib/types';
 
 type CardSpec = { id: string; component: React.FC };
@@ -130,6 +134,11 @@ function buildCards(
     cards.push({ id: 'q14-describe', component: Q14Describe });
   }
 
+  cards.push(
+    { id: 'q15', component: Q15SampleType },
+    { id: 'q16', component: Q16Consent },
+  );
+
   return cards;
 }
 
@@ -165,6 +174,7 @@ export function IntakeShell() {
   const [prevId, setPrevId] = useState<string | null>(null);
   const [direction, setDirection] = useState<Direction>('forward');
   const [isAnimating, setIsAnimating] = useState(false);
+  const [completed, setCompleted] = useState(false);
 
   const currentIdx = cards.findIndex(c => c.id === currentId);
 
@@ -182,7 +192,11 @@ export function IntakeShell() {
   const isLast = currentIdx >= cards.length - 1;
 
   function advance() {
-    if (isAnimating || isLast || currentIdx < 0) return;
+    if (isAnimating || currentIdx < 0) return;
+    if (isLast) {
+      setCompleted(true);
+      return;
+    }
     setDirection('forward');
     setPrevId(currentId);
     setCurrentId(cards[currentIdx + 1].id);
@@ -208,6 +222,10 @@ export function IntakeShell() {
   const CurrentCard = cards[currentIdx]?.component ?? null;
   const PrevCard = prevId !== null ? (cards.find(c => c.id === prevId)?.component ?? null) : null;
 
+  if (completed) {
+    return <CompletionScreen />;
+  }
+
   return (
     <div className="relative flex flex-col h-dvh overflow-hidden bg-slate-50">
       {/* Progress bar */}
@@ -222,7 +240,9 @@ export function IntakeShell() {
       <div className="relative flex-1 overflow-hidden">
         {PrevCard && (
           <div key={`exit-${prevId}`} className={`absolute inset-0 ${exitClass}`}>
-            <PrevCard />
+            <CardScrollArea>
+              <PrevCard />
+            </CardScrollArea>
           </div>
         )}
         {CurrentCard && (
@@ -231,7 +251,9 @@ export function IntakeShell() {
             className={`absolute inset-0 ${prevId !== null ? enterClass : ''}`}
             onAnimationEnd={handleAnimationEnd}
           >
-            <CurrentCard />
+            <CardScrollArea>
+              <CurrentCard />
+            </CardScrollArea>
           </div>
         )}
       </div>

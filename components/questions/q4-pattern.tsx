@@ -163,7 +163,7 @@ export function Q4Pattern() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 overflow-y-auto">
+    <div className="flex flex-col min-h-full bg-slate-50">
       <div className="px-4 pt-8 pb-4 max-w-sm mx-auto w-full">
         <div className="flex flex-col gap-3 mb-6">
           <p className="text-sm font-medium tracking-wide text-sky-600">Question 4 of 16</p>

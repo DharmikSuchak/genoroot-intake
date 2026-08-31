@@ -91,7 +91,7 @@ export function Q1Age() {
   }
 
   return (
-    <div className="flex flex-col h-full py-8 bg-slate-50">
+    <div className="flex flex-col min-h-full py-8 bg-slate-50">
       {/* Question header — padded */}
       <div className="px-4 flex flex-col gap-3 max-w-sm mx-auto w-full">
         <p className="text-sm font-medium tracking-wide text-sky-600">Question 1 of 16</p>
@@ -233,13 +233,15 @@ export function Q1Age() {
         </div>
       </div>
 
-      {/* Fine-adjustment buttons — visually secondary (40px, outlined) */}
-      <div className="flex justify-center gap-8 pt-5 pb-1">
+      {/* Fine-adjustment buttons — visually secondary (thin border, muted
+          text) but sized to the 56px tap-target minimum like every other
+          control in the app. */}
+      <div className="flex justify-center gap-6 pt-5 pb-1">
         <button
           onClick={() => adjustBy(-1)}
           aria-label="Decrease age by 1"
           className="flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 text-xl active:bg-slate-50"
-          style={{ width: 40, height: 40 }}
+          style={{ width: 56, height: 56 }}
         >
           −
         </button>
@@ -247,7 +249,7 @@ export function Q1Age() {
           onClick={() => adjustBy(1)}
           aria-label="Increase age by 1"
           className="flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 text-xl active:bg-slate-50"
-          style={{ width: 40, height: 40 }}
+          style={{ width: 56, height: 56 }}
         >
           +
         </button>

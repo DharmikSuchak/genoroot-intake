@@ -44,7 +44,7 @@ export function Q67Hormonal() {
   }
 
   return (
-    <div className="flex flex-col h-full px-4 py-8 bg-slate-50 overflow-y-auto">
+    <div className="flex flex-col min-h-full px-4 py-8 bg-slate-50">
       <div className="max-w-sm mx-auto w-full flex flex-col gap-6">
         <div className="flex flex-col gap-3">
           <p className="text-sm font-medium tracking-wide text-sky-600">Questions 6–7 of 16</p>
