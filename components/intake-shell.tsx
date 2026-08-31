@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useIntakeStore, computeCompleteness } from '@/lib/intake-store';
+import { useIntakeStore, computeCompleteness, getUnansweredQuestionIndexes } from '@/lib/intake-store';
 import { CardScrollArea } from '@/components/card-scroll-area';
 import { Q1Age } from '@/components/questions/q1-age';
 import { Q2Duration } from '@/components/questions/q2-duration';
@@ -182,6 +182,14 @@ const CARD_ID_FOR_SPOKEN_FIELD: Record<SpokenFieldKey, string> = {
   products: 'q12-gateway',
 };
 
+// Card id that opens each question, Q1 through Q16 — mirrors the order of
+// getUnansweredQuestionIndexes, so the completion screen's "go back" prompt
+// can jump straight to the first unanswered one. Q6/Q7 share one card.
+const QUESTION_CARD_IDS = [
+  'q1', 'q2', 'q3', 'q4', 'q5', 'q67', 'q67', 'q8', 'q9', 'q10',
+  'q11-smoking', 'q12-gateway', 'q13-gateway', 'q14', 'q15', 'q16',
+];
+
 export function IntakeShell() {
   const progressPct = useIntakeStore(s =>
     Math.round(computeCompleteness(s.form, s.provenance).fraction * 100)
@@ -193,6 +201,9 @@ export function IntakeShell() {
   const proceduresGateway = useIntakeStore(s => s.proceduresGateway);
   const procedures = useIntakeStore(s => s.form.procedures);
   const pastTreatmentSideEffects = useIntakeStore(s => s.form.past_treatment_side_effects);
+  const consent = useIntakeStore(s => s.form.consent);
+  const fullForm = useIntakeStore(s => s.form);
+  const fullProvenance = useIntakeStore(s => s.provenance);
 
   const ageProv = useIntakeStore(s => s.provenance.age_hair_loss_began);
   const durationProv = useIntakeStore(s => s.provenance.duration);
@@ -261,6 +272,13 @@ export function IntakeShell() {
       voiceScopedProducts,
     ]
   );
+
+  const unansweredIndexes = useMemo(
+    () => getUnansweredQuestionIndexes(fullForm, fullProvenance),
+    [fullForm, fullProvenance]
+  );
+  const firstUnansweredCardId =
+    unansweredIndexes.length > 0 ? QUESTION_CARD_IDS[unansweredIndexes[0]] : null;
 
   const [currentId, setCurrentId] = useState<string>(cards[0]?.id ?? 'q5');
   const [prevId, setPrevId] = useState<string | null>(null);
@@ -349,6 +367,15 @@ export function IntakeShell() {
     enterNormalFlow(CARD_ID_FOR_SPOKEN_FIELD[key]);
   }
 
+  function handleJumpToUnanswered() {
+    if (!firstUnansweredCardId || !cards.some(c => c.id === firstUnansweredCardId)) return;
+    setCompleted(false);
+    setDirection('back');
+    setPrevId(null);
+    setIsAnimating(false);
+    setCurrentId(firstUnansweredCardId);
+  }
+
   const currentIdx = cards.findIndex(c => c.id === currentId);
 
   // Guard: if the active card was removed (e.g. smoking changed to false while
@@ -363,9 +390,13 @@ export function IntakeShell() {
 
   const isFirst = currentIdx <= 0;
   const isLast = currentIdx >= cards.length - 1;
+  // Consent (Q16) can't be left blank — every other question is skippable,
+  // since forcing an answer on a medical intake produces guesses rather
+  // than blanks, and a blank is something a doctor can follow up on.
+  const onUnansweredConsent = cards[currentIdx]?.id === 'q16' && consent === null;
 
   function advance() {
-    if (isAnimating || currentIdx < 0) return;
+    if (isAnimating || currentIdx < 0 || onUnansweredConsent) return;
     if (isLast) {
       setCompleted(true);
       return;
@@ -417,7 +448,12 @@ export function IntakeShell() {
   }
 
   if (completed) {
-    return <CompletionScreen />;
+    return (
+      <CompletionScreen
+        unansweredCount={unansweredIndexes.length}
+        onJumpToUnanswered={handleJumpToUnanswered}
+      />
+    );
   }
 
   return (
@@ -468,7 +504,7 @@ export function IntakeShell() {
           </button>
           <button
             onClick={advance}
-            disabled={isAnimating}
+            disabled={isAnimating || onUnansweredConsent}
             className="flex-1 h-14 rounded-xl font-medium text-base text-white bg-sky-500 transition-colors active:bg-sky-600 disabled:opacity-60"
           >
             {isLast ? 'Done' : 'Next →'}

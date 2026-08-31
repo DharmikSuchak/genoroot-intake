@@ -49,7 +49,7 @@ export function Q14SideEffects() {
           </h2>
           {prov === 'inferred' && (
             <p className="text-base font-medium" style={{ color: '#b45309' }}>
-              Based on what you told us about your products — tap to confirm, or pick the other answer to change it.
+              Based on what you told us about your products. Tap to confirm, or pick the other answer to change it.
             </p>
           )}
         </div>

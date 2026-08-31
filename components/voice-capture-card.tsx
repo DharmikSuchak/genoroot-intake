@@ -75,7 +75,7 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      fallbackToTapFlow("Couldn't access your microphone — let's go through it together.");
+      fallbackToTapFlow("Couldn't access your microphone. Let's go through it together.");
       return;
     }
 
@@ -154,7 +154,7 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
       if (signal.aborted) return;
       onCaptured(fields ?? {}, transcript);
     } catch {
-      fallbackToTapFlow("Couldn't catch that — let's go through it together.");
+      fallbackToTapFlow("Couldn't catch that. Let's go through it together.");
     }
   }
 
@@ -207,7 +207,7 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
             {state === 'recording' && (
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-red-600 animate-pulse" style={{ width: 10, height: 10 }} />
-                <span className="text-base font-medium text-slate-700 tabular-nums">Recording — {countdown}</span>
+                <span className="text-base font-medium text-slate-700 tabular-nums">Recording ({countdown})</span>
               </div>
             )}
             {state === 'processing' && (

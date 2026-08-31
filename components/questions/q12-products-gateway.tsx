@@ -22,7 +22,7 @@ export function Q12ProductsGateway() {
             Have you used any hair products or treatments at home?
           </h2>
           <p className="text-base text-slate-500">
-            Shampoos, oils, minoxidil, supplements — anything you've tried yourself.
+            Shampoos, oils, minoxidil, supplements: anything you've tried yourself.
           </p>
         </div>
 

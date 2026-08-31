@@ -244,7 +244,7 @@ export function Q1Age() {
         </div>
 
         <p className="text-sm text-slate-400 pt-4">
-          Swipe up or down to choose — or tap the number to type it in.
+          Swipe up or down to choose, or tap the number to type it in.
         </p>
       </div>
     </div>

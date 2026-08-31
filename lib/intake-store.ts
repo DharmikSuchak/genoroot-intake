@@ -130,11 +130,11 @@ export const EMPTY_PROVENANCE: ProvenanceMap = {
 // 'empty', even if the selection is empty (e.g. "none of the above").
 // ---------------------------------------------------------------------------
 
-export function computeCompleteness(
-  form: IntakeForm,
-  prov: ProvenanceMap
-): CompletenessResult {
-  const checks: boolean[] = [
+/** One answered flag per question, Q1 through Q16 in order. An array-type
+ *  question counts as answered once its provenance is no longer 'empty',
+ *  even if the selection itself is empty (e.g. "none of the above"). */
+function questionAnsweredFlags(form: IntakeForm, prov: ProvenanceMap): boolean[] {
+  return [
     form.age_hair_loss_began !== null,                         // Q1
     form.duration !== null,                                    // Q2
     prov.family_history !== 'empty',                          // Q3
@@ -164,9 +164,23 @@ export function computeCompleteness(
     form.sample_type !== null,                                // Q15
     form.consent !== null,                                    // Q16
   ];
+}
 
+export function computeCompleteness(
+  form: IntakeForm,
+  prov: ProvenanceMap
+): CompletenessResult {
+  const checks = questionAnsweredFlags(form, prov);
   const answered = checks.filter(Boolean).length;
   return { answered, total: 16, fraction: answered / 16 };
+}
+
+/** Zero-based indexes (into Q1..Q16) of every question still unanswered,
+ *  in question order — used by the completion screen's "go back" prompt. */
+export function getUnansweredQuestionIndexes(form: IntakeForm, prov: ProvenanceMap): number[] {
+  return questionAnsweredFlags(form, prov)
+    .map((answered, i) => (answered ? -1 : i))
+    .filter(i => i !== -1);
 }
 
 // ---------------------------------------------------------------------------

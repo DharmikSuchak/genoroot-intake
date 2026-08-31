@@ -87,6 +87,10 @@ const FAMILY_MEMBER_LABEL: Record<string, string> = {
   'Siblings with thinning or baldness': 'siblings',
 };
 
+const PAST_6_MONTHS_LABEL: Record<string, string> = {
+  'Change in location/water/air quality': 'change in location, water, or air quality',
+};
+
 // ---------------------------------------------------------------------------
 // generateSummary
 // ---------------------------------------------------------------------------
@@ -119,7 +123,7 @@ function sentenceMedical(form: IntakeForm): string | null {
 
   const conditions = form.diagnosed_conditions.filter(c => c !== 'None');
   if (conditions.length > 0) {
-    clauses.push(`${joinList(conditions)} diagnosed`);
+    clauses.push(joinList(conditions.map(lowerFirst)));
   }
   if (form.menstrual_cycle !== null && form.menstrual_cycle !== 'Not applicable') {
     clauses.push(`${form.menstrual_cycle.toLowerCase()} menstrual cycle`);
@@ -127,11 +131,12 @@ function sentenceMedical(form: IntakeForm): string | null {
   if (form.pregnancy_related !== null && form.pregnancy_related !== 'Not applicable') {
     clauses.push(form.pregnancy_related.toLowerCase());
   }
-  if (form.adult_acne_oily_skin === true) {
-    clauses.push('adult acne/oily skin');
-  }
-  if (form.excess_body_facial_hair === true) {
-    clauses.push('excess facial/body hair');
+
+  const skinSigns: string[] = [];
+  if (form.adult_acne_oily_skin === true) skinSigns.push('adult acne and oily skin');
+  if (form.excess_body_facial_hair === true) skinSigns.push('excess facial and body hair');
+  if (skinSigns.length > 0) {
+    clauses.push(`with ${joinList(skinSigns)}`);
   }
 
   return joinClauses(clauses);
@@ -157,9 +162,11 @@ function sentenceTreatments(form: IntakeForm): string | null {
     const entry = form.procedures[key];
     if (entry.done !== true) continue;
     let phrase = PROCEDURE_LABEL[key];
-    if (entry.sessions) phrase += ` (${PROCEDURE_SESSIONS_LABEL[entry.sessions]})`;
-    if (entry.helped === true) phrase += ' — helped';
-    if (entry.helped === false) phrase += " — didn't help";
+    const details: string[] = [];
+    if (entry.sessions) details.push(PROCEDURE_SESSIONS_LABEL[entry.sessions]);
+    if (entry.helped === true) details.push('helped');
+    if (entry.helped === false) details.push("didn't help");
+    if (details.length > 0) phrase += ` (${joinList(details)})`;
     treatmentPhrases.push(phrase);
   }
 
@@ -179,28 +186,33 @@ function sentenceLifestyle(form: IntakeForm): string | null {
   const clauses: string[] = [];
 
   if (form.past_6_months.length > 0) {
-    clauses.push(`${joinList(form.past_6_months.map(lowerFirst))} in the past 6 months`);
+    const triggers = form.past_6_months.map(t => PAST_6_MONTHS_LABEL[t] ?? lowerFirst(t));
+    clauses.push(`${joinList(triggers)} in the past 6 months`);
   }
 
+  const habitFacts: string[] = [];
   const h = form.habits;
   if (h.smoking === true) {
     const severity = h.smoking_severity ? SMOKING_SEVERITY_LABEL[h.smoking_severity] : null;
-    clauses.push(severity ? `smokes ${severity}` : 'smokes');
+    habitFacts.push(severity ? `smokes ${severity}` : 'smokes');
   }
   if (h.alcohol === true) {
-    clauses.push('drinks alcohol');
+    habitFacts.push('drinks alcohol');
   }
   if (h.hard_water === true) {
-    clauses.push('hard water at home');
+    habitFacts.push('hard water at home');
   }
   if (h.hair_wash_frequency !== null) {
-    clauses.push(WASH_FREQUENCY_LABEL[h.hair_wash_frequency]);
+    habitFacts.push(WASH_FREQUENCY_LABEL[h.hair_wash_frequency]);
   }
   if (h.heating_tools_styling_chemicals === true) {
-    clauses.push('regular heat styling/chemical treatments');
+    habitFacts.push('regular heat styling and chemical treatments');
   }
   if (h.salon_treatments === true) {
-    clauses.push(`salon treatments${h.salon_treatment_detail ? ` (${h.salon_treatment_detail})` : ''}`);
+    habitFacts.push(`salon treatments${h.salon_treatment_detail ? ` (${h.salon_treatment_detail})` : ''}`);
+  }
+  if (habitFacts.length > 0) {
+    clauses.push(`with ${joinList(habitFacts)}`);
   }
 
   return joinClauses(clauses);

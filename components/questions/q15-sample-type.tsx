@@ -25,7 +25,7 @@ export function Q15SampleType() {
             Which sample would you prefer to give?
           </h2>
           <p className="text-base text-slate-500">
-            Either works for the genetic analysis — pick whichever you're more comfortable with.
+            Either works for the genetic analysis. Pick whichever you're more comfortable with.
           </p>
         </div>
 
