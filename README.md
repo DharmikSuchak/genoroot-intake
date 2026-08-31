@@ -45,6 +45,11 @@ genuinely not sure yet whether patients will prefer it to tapping. That's
 why every voice step has a visible skip, and every AI-filled field has a
 one-tap override.
 
+Only Q16 (consent) is required to submit. Every other question can be
+left unanswered. I chose this deliberately. Forcing a patient to guess
+creates false certainty, while a blank answer gives the doctor a clear
+signal to follow up.
+
 Q11, Q12, and Q13 are grids on the paper form. Rendering them as grids in
 the app would just rebuild the form people abandon. So Q13 became one
 gateway question. One tap fills twelve fields, covering most patients who
@@ -95,17 +100,6 @@ automated test suite.
 The next week would go toward two things: taking effort off the patient
 and making correctness something I can actually measure. Everything below
 is ordered by how much it moves those two needles.
-
-### Product capture
-
-The patient takes a photo of the products they currently use. Bottles,
-tubes, whatever they've got. A vision model identifies likely matches and
-maps them onto Q12's five treatment/product rows. The patient reviews and
-confirms what was detected before anything gets saved. The whole point is
-to replace a five-row checklist with a single camera tap, not to bolt on
-AI for its own sake. A wrong auto-fill that the patient doesn't catch is
-worse than letting them pick manually, so the confirmation step is
-non-negotiable.
 
 ### Automated evaluation
 
@@ -159,3 +153,7 @@ unknown is more useful than fabricated certainty. Making uncertainty a
 first-class value that the doctor can see, rather than something the form
 silently drops, means patients stop guessing and doctors know exactly
 where to follow up.
+
+Longer term, I'd explore photo-assisted treatment capture, where patients
+can photograph product packaging, prescriptions, or treatment records
+they already have available.
