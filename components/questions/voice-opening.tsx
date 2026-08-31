@@ -35,7 +35,7 @@ export function VoiceOpening({ onSkip, onCaptured }: VoiceOpeningProps) {
       <div className="flex flex-col gap-2">
         <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">For example</p>
         <p className="text-base text-slate-500 italic leading-relaxed">&ldquo;{example}&rdquo;</p>
-        <p className="text-sm text-slate-400 pt-1">Hindi, English, whatever&apos;s comfortable.</p>
+        <p className="text-sm text-slate-400 pt-1">Hindi, English, ya dono mix, jaisa comfortable lage.</p>
       </div>
     </VoiceCaptureCard>
   );
