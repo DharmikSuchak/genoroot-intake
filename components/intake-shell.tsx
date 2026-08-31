@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useIntakeStore, computeCompleteness, getUnansweredQuestionIndexes } from '@/lib/intake-store';
+import { useIntakeStore, getUnansweredQuestionIndexes } from '@/lib/intake-store';
 import { CardScrollArea } from '@/components/card-scroll-area';
 import { Q1Age } from '@/components/questions/q1-age';
 import { Q2Duration } from '@/components/questions/q2-duration';
@@ -191,9 +191,6 @@ const QUESTION_CARD_IDS = [
 ];
 
 export function IntakeShell() {
-  const progressPct = useIntakeStore(s =>
-    Math.round(computeCompleteness(s.form, s.provenance).fraction * 100)
-  );
   const smoking = useIntakeStore(s => s.form.habits.smoking);
   const salon = useIntakeStore(s => s.form.habits.salon_treatments);
   const productsGateway = useIntakeStore(s => s.productsGateway);
@@ -377,6 +374,10 @@ export function IntakeShell() {
   }
 
   const currentIdx = cards.findIndex(c => c.id === currentId);
+  // Position in the card sequence, not answered-question count — so the bar
+  // visibly advances on every "Next" tap, including while stepping through a
+  // multi-card question like Q11's habit table.
+  const progressPct = cards.length > 0 ? Math.round(((Math.max(currentIdx, 0) + 1) / cards.length) * 100) : 0;
 
   // Guard: if the active card was removed (e.g. smoking changed to false while
   // still on the severity card — shouldn't happen in normal flow but safe to handle).
