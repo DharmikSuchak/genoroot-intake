@@ -1,12 +1,16 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useIntakeStore } from '@/lib/intake-store';
 
 const MIN = 5;
 const MAX = 85;
-const TICK = 48; // px between ticks — well above the 44px minimum
+const ITEM_HEIGHT = 56; // matches the app's 56px tap-target minimum
+const VISIBLE_ITEMS = 5; // odd, so exactly one row sits dead-center
+const PADDING = ((VISIBLE_ITEMS - 1) / 2) * ITEM_HEIGHT;
+const LIST_HEIGHT = VISIBLE_ITEMS * ITEM_HEIGHT;
 const DEFAULT = 25;
+const SETTLE_DELAY = 120; // ms of scroll inactivity before committing the centered value
 
 const AGES = Array.from({ length: MAX - MIN + 1 }, (_, i) => i + MIN);
 
@@ -14,12 +18,8 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-function translateForValue(v: number, halfW: number) {
-  return halfW - (v - MIN) * TICK;
-}
-
-function valueFromTranslate(tx: number, halfW: number) {
-  return clamp(Math.round(MIN + (halfW - tx) / TICK), MIN, MAX);
+function indexForScrollTop(scrollTop: number) {
+  return clamp(Math.round(scrollTop / ITEM_HEIGHT), 0, AGES.length - 1);
 }
 
 export function Q1Age() {
@@ -28,66 +28,69 @@ export function Q1Age() {
 
   const [value, setValue] = useState(stored ?? DEFAULT);
   const [touched, setTouched] = useState(stored !== null);
-  const [halfW, setHalfW] = useState(0);
-  // dragTx is the raw translateX during an active drag; null when idle
-  const [dragTx, setDragTx] = useState<number | null>(null);
-  // mountOffset starts at 30px and settles to 0 on first render, giving the
-  // ruler a visible "slide in" that reads as draggable without instructions
-  const [mountOffset, setMountOffset] = useState(30);
-  const dragStart = useRef<{ x: number; tx: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
 
-  useEffect(() => {
-    const el = containerRef.current;
+  const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticScroll = useRef(false);
+
+  function scrollToAge(age: number, smooth: boolean) {
+    const el = listRef.current;
     if (!el) return;
-    setHalfW(el.clientWidth / 2);
-    // Settle the mount offset after the strip has rendered at its initial position
-    const raf = requestAnimationFrame(() => setMountOffset(0));
-    return () => cancelAnimationFrame(raf);
+    programmaticScroll.current = true;
+    el.scrollTo({ top: (age - MIN) * ITEM_HEIGHT, behavior: smooth ? 'smooth' : 'auto' });
+    window.setTimeout(() => { programmaticScroll.current = false; }, smooth ? 400 : 50);
+  }
+
+  // Position the wheel on the stored (or default) value before first paint.
+  useLayoutEffect(() => {
+    scrollToAge(value, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const minTx = halfW - (MAX - MIN) * TICK;
-  const maxTx = halfW;
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
 
-  // The live translate: dragTx during drag, stable derived value otherwise
-  const liveTx = dragTx !== null ? dragTx : translateForValue(value, halfW);
-  const tx = clamp(liveTx, minTx, maxTx);
-
-  // What value the ruler is currently showing (integer, updates during drag)
-  const displayValue = halfW > 0 ? valueFromTranslate(tx, halfW) : value;
-
-  function commit(v: number) {
-    setValue(v);
+  function commit(age: number) {
+    setValue(age);
     if (!touched) setTouched(true);
-    setField('age_hair_loss_began', v, 'tapped');
+    setField('age_hair_loss_began', age, 'tapped');
   }
 
-  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const startTx = dragTx !== null ? dragTx : translateForValue(value, halfW);
-    dragStart.current = { x: e.clientX, tx: startTx };
-    setDragTx(startTx);
-    if (!touched) setTouched(true); // undim immediately on first touch
+  function handleScroll() {
+    if (programmaticScroll.current) return;
+    if (!touched) setTouched(true);
+    const el = listRef.current;
+    if (!el) return;
+    setValue(AGES[indexForScrollTop(el.scrollTop)]);
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => {
+      const finalEl = listRef.current;
+      if (!finalEl) return;
+      commit(AGES[indexForScrollTop(finalEl.scrollTop)]);
+    }, SETTLE_DELAY);
   }
 
-  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!dragStart.current) return;
-    const raw = dragStart.current.tx + (e.clientX - dragStart.current.x);
-    setDragTx(clamp(raw, minTx, maxTx));
+  function openEditor() {
+    setDraft(String(value));
+    setEditing(true);
   }
 
-  function handlePointerUp() {
-    if (!dragStart.current) return;
-    dragStart.current = null;
-    const snapped = valueFromTranslate(tx, halfW);
-    commit(snapped);
-    setDragTx(null); // let CSS transition animate the snap to exact grid position
+  function submitEditor() {
+    const parsed = parseInt(draft, 10);
+    if (!Number.isNaN(parsed)) {
+      const clamped = clamp(parsed, MIN, MAX);
+      commit(clamped);
+      scrollToAge(clamped, true);
+    }
+    setEditing(false);
   }
 
-  function adjustBy(delta: number) {
-    const next = clamp(value + delta, MIN, MAX);
-    commit(next);
-    setDragTx(null); // ensures idle transition animates to new position
+  function cancelEditor() {
+    setEditing(false);
   }
 
   return (
@@ -103,158 +106,147 @@ export function Q1Age() {
         </h2>
       </div>
 
-      {/* Large number */}
-      <div className="flex flex-col items-center pt-6 pb-4">
-        <span
-          className="text-8xl font-bold leading-none tabular-nums"
-          style={{
-            fontFamily: 'var(--font-outfit), system-ui, sans-serif',
-            color: touched ? '#1e293b' : '#cbd5e1',
-            display: 'inline-block',
-            transform: dragTx !== null ? 'scale(1.05)' : 'scale(1)',
-            transition: 'color 200ms, transform 150ms ease-out',
-          }}
-        >
-          {displayValue}
-        </span>
-        <span
-          className="text-base mt-2"
-          style={{ color: touched ? '#94a3b8' : '#e2e8f0', transition: 'color 200ms' }}
-        >
-          years old
-        </span>
-      </div>
-
-      {/* Ruler — full bleed, no horizontal padding */}
-      <div className="relative" style={{ userSelect: 'none' }}>
-        {/* Fixed center indicator: thin line + downward triangle */}
-        <div className="pointer-events-none absolute inset-0 flex justify-center z-10">
-          <div className="flex flex-col items-center">
-            <div style={{ width: 2, height: '100%', backgroundColor: '#0ea5e9', opacity: 0.6 }} />
-          </div>
-        </div>
-        {/* Downward triangle above the ruler */}
-        <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 z-10" style={{ marginTop: -7 }}>
-          <svg width="12" height="8" viewBox="0 0 12 8">
-            <path d="M6 8L0 0h12z" fill="#0ea5e9" />
-          </svg>
-        </div>
-
-        {/* Left fade */}
+      {/* Vertical wheel picker */}
+      <div className="flex flex-col items-center pt-6 pb-2">
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 z-10"
-          style={{ width: 72, background: 'linear-gradient(to right, #f8fafc 30%, transparent)' }}
-        />
-        {/* Right fade */}
-        <div
-          className="pointer-events-none absolute inset-y-0 right-0 z-10"
-          style={{ width: 72, background: 'linear-gradient(to left, #f8fafc 30%, transparent)' }}
-        />
-
-        {/* Draggable viewport */}
-        <div
-          ref={containerRef}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          style={{
-            position: 'relative',
-            overflow: 'hidden',
-            height: 64,
-            touchAction: 'none',
-            cursor: dragTx !== null ? 'grabbing' : 'grab',
-          }}
+          className="relative w-full max-w-sm"
+          style={{ height: LIST_HEIGHT }}
         >
-          {/* Tick strip */}
-          {halfW > 0 && (
+          {/* Centered highlight band — sits behind the scroll list */}
+          <div
+            className="pointer-events-none absolute inset-x-4 rounded-2xl border-2"
+            style={{
+              top: PADDING,
+              height: ITEM_HEIGHT,
+              borderColor: touched ? '#0ea5e9' : '#e2e8f0',
+              backgroundColor: touched ? '#f0f9ff' : 'transparent',
+              transition: 'border-color 200ms, background-color 200ms',
+            }}
+          />
+
+          {editing ? (
+            // Editing needs real pointer events (it's a live input), but that's
+            // fine here — the wheel underneath is hidden while editing, so
+            // there's no swipe to conflict with.
             <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                // wide enough for all ticks + half a gap of breathing room
-                width: (MAX - MIN + 1) * TICK,
-                height: '100%',
-                transform: `translateX(${tx + mountOffset}px)`,
-                // CSS transition applies the snap animation on pointer-up;
-                // disabled during drag so motion tracks the finger exactly
-                transition: dragTx !== null ? 'none' : 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
-                willChange: 'transform',
-              }}
+              className="absolute inset-x-4 flex items-center justify-center gap-2"
+              style={{ top: PADDING, height: ITEM_HEIGHT }}
             >
-              {AGES.map((age, i) => {
-                const isMajor5 = age % 5 === 0;
-                const hasLabel = age % 10 === 0 || age === MIN || age === MAX;
-                const isActive = age === displayValue;
+              <input
+                ref={inputRef}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={draft}
+                onChange={e => setDraft(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                onBlur={submitEditor}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitEditor();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelEditor();
+                  }
+                }}
+                className="w-20 bg-transparent text-center focus:outline-none"
+                style={{
+                  fontFamily: 'var(--font-outfit), system-ui, sans-serif',
+                  fontSize: 36,
+                  fontWeight: 700,
+                  color: '#0369a1',
+                }}
+              />
+              <span className="text-base text-sky-600">years old</span>
+            </div>
+          ) : (
+            // Purely decorative — pointer-events-none so it never steals a
+            // swipe that starts over the center band. The actual tap-to-edit
+            // target is the (transparent) center row inside the scrollable
+            // list below, which is a normal in-flow element and never blocks
+            // scrolling.
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-4 flex items-center justify-center gap-2"
+              style={{ top: PADDING, height: ITEM_HEIGHT }}
+            >
+              <span
+                className="tabular-nums"
+                style={{
+                  fontFamily: 'var(--font-outfit), system-ui, sans-serif',
+                  fontSize: 36,
+                  fontWeight: 700,
+                  color: touched ? '#0369a1' : '#94a3b8',
+                }}
+              >
+                {value}
+              </span>
+              <span className="text-base" style={{ color: touched ? '#0284c7' : '#94a3b8' }}>
+                years old
+              </span>
+            </div>
+          )}
+
+          {/* Scrollable wheel — hidden behind the highlight band and input while editing */}
+          <div
+            ref={listRef}
+            onScroll={handleScroll}
+            className="h-full overflow-y-scroll"
+            style={{
+              scrollSnapType: 'y mandatory',
+              WebkitOverflowScrolling: 'touch',
+              maskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 20%, black 80%, transparent)',
+              visibility: editing ? 'hidden' : 'visible',
+            }}
+          >
+            <div style={{ paddingTop: PADDING, paddingBottom: PADDING }}>
+              {AGES.map(age => {
+                const distance = Math.abs(age - value);
+                const isCenter = distance === 0;
                 return (
                   <div
                     key={age}
+                    role={isCenter ? 'button' : undefined}
+                    tabIndex={isCenter ? 0 : undefined}
+                    aria-label={isCenter ? `Edit age, currently ${value} years old` : undefined}
+                    onClick={() => {
+                      if (isCenter) openEditor();
+                    }}
+                    onKeyDown={e => {
+                      if (isCenter && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        openEditor();
+                      }
+                    }}
+                    className="flex items-center justify-center tabular-nums"
                     style={{
-                      position: 'absolute',
-                      left: i * TICK,
-                      top: 10,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
+                      height: ITEM_HEIGHT,
+                      scrollSnapAlign: 'center',
+                      fontFamily: 'var(--font-outfit), system-ui, sans-serif',
+                      fontSize: isCenter ? 36 : distance === 1 ? 22 : 18,
+                      fontWeight: isCenter ? 700 : 500,
+                      cursor: isCenter ? 'pointer' : undefined,
+                      // The center row's number is rendered by the decorative
+                      // overlay above (which can also host the edit input);
+                      // this row stays present for scroll-snap geometry and
+                      // handles the actual tap-to-edit interaction, but its
+                      // own text is invisible so nothing doubles up visually.
+                      color: isCenter ? 'transparent' : distance === 1 ? '#94a3b8' : '#cbd5e1',
                     }}
                   >
-                    {/* Tick line */}
-                    <div
-                      style={{
-                        width: isActive ? 2.5 : isMajor5 ? 1.5 : 1,
-                        height: isActive ? 28 : isMajor5 ? 22 : 14,
-                        backgroundColor: isActive ? '#0ea5e9' : isMajor5 ? '#475569' : '#cbd5e1',
-                        borderRadius: 2,
-                      }}
-                    />
-                    {/* Label — only on major-10 ticks and range ends */}
-                    {hasLabel && (
-                      <span
-                        style={{
-                          position: 'absolute',
-                          top: 34,
-                          fontSize: 10,
-                          lineHeight: 1,
-                          whiteSpace: 'nowrap',
-                          transform: 'translateX(-50%)',
-                          color: isActive ? '#0284c7' : '#94a3b8',
-                          fontWeight: isActive ? 600 : 400,
-                        }}
-                      >
-                        {age}
-                      </span>
-                    )}
+                    {age}
                   </div>
                 );
               })}
             </div>
-          )}
+          </div>
         </div>
-      </div>
 
-      {/* Fine-adjustment buttons — visually secondary (thin border, muted
-          text) but sized to the 56px tap-target minimum like every other
-          control in the app. */}
-      <div className="flex justify-center gap-6 pt-5 pb-1">
-        <button
-          onClick={() => adjustBy(-1)}
-          aria-label="Decrease age by 1"
-          className="flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 text-xl active:bg-slate-50"
-          style={{ width: 56, height: 56 }}
-        >
-          −
-        </button>
-        <button
-          onClick={() => adjustBy(1)}
-          aria-label="Increase age by 1"
-          className="flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 text-xl active:bg-slate-50"
-          style={{ width: 56, height: 56 }}
-        >
-          +
-        </button>
+        <p className="text-sm text-slate-400 pt-4">
+          Swipe up or down to choose — or tap the number to type it in.
+        </p>
       </div>
-
     </div>
   );
 }

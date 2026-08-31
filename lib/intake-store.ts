@@ -13,7 +13,12 @@ import type {
   Procedures,
   TopLevelKey,
   CompletenessResult,
+  DurationOption,
+  FamilyHistoryOption,
+  PatternOption,
+  Past6MonthsOption,
 } from './types';
+import { CONFIDENCE_THRESHOLD, type SpokenFieldInput } from './voice-schema';
 
 // ---------------------------------------------------------------------------
 // Default / empty state
@@ -165,6 +170,47 @@ export function computeCompleteness(
 }
 
 // ---------------------------------------------------------------------------
+// Voice pre-fill — the fields the opening/second voice capture can write.
+// ---------------------------------------------------------------------------
+
+/** What a voice capture actually wrote, for the confirmation card to summarize. */
+export interface AppliedSpokenSummary {
+  age_hair_loss_began?: number;
+  duration?: DurationOption;
+  family_history?: FamilyHistoryOption[];
+  pattern?: PatternOption[];
+  past_6_months?: Past6MonthsOption[];
+  products?: (keyof Products)[];
+}
+
+export type SpokenFieldKey = keyof AppliedSpokenSummary;
+
+const FAMILY_HISTORY_NONE: FamilyHistoryOption = 'No known family history';
+
+/** Mirrors Q3Family's own toggle rule: "None" is exclusive of every other option. */
+function sanitizeFamilyHistory(values: FamilyHistoryOption[]): FamilyHistoryOption[] {
+  return values.includes(FAMILY_HISTORY_NONE) ? [FAMILY_HISTORY_NONE] : values;
+}
+
+/**
+ * How many individual data points the voice-scoped fields hold right now —
+ * used to decide whether to offer the optional second capture ("fewer than
+ * 10 fields filled"). Each selected multi-select option counts as one.
+ */
+export function countVoiceScopedFilled(form: IntakeForm, provenance: ProvenanceMap): number {
+  let n = 0;
+  if (provenance.age_hair_loss_began !== 'empty') n += 1;
+  if (provenance.duration !== 'empty') n += 1;
+  if (provenance.family_history !== 'empty') n += form.family_history.length;
+  if (provenance.pattern !== 'empty') n += form.pattern.length;
+  if (provenance.past_6_months !== 'empty') n += form.past_6_months.length;
+  for (const key of Object.keys(form.products) as (keyof Products)[]) {
+    if (provenance.products[key].used === 'spoken' && form.products[key].used === true) n += 1;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -210,6 +256,18 @@ interface IntakeActions {
 
   /** Same as setProductsGateway, for the Q13 procedures gateway. */
   setProceduresGateway: (value: boolean | null) => void;
+
+  /**
+   * Writes whichever voice-extracted fields clear the confidence threshold
+   * into fields that are still empty (never overwrites an existing answer,
+   * spoken or tapped) with provenance 'spoken'. Returns only what it
+   * actually wrote, for the confirmation card to summarize.
+   */
+  applySpokenFields: (input: SpokenFieldInput) => AppliedSpokenSummary;
+
+  /** Resets one voice-scoped field back to empty, e.g. before jumping the
+   *  patient to that question to correct it by hand. */
+  clearSpokenField: (key: SpokenFieldKey) => void;
 
   /** Returns a clean IntakeForm object with no provenance metadata. */
   getFilledForm: () => IntakeForm;
@@ -363,6 +421,121 @@ export const useIntakeStore = create<IntakeStore>()(
             },
           };
         }),
+
+      applySpokenFields: input => {
+        const summary: AppliedSpokenSummary = {};
+        const { provenance } = get();
+
+        if (
+          input.age_hair_loss_began &&
+          input.age_hair_loss_began.confidence >= CONFIDENCE_THRESHOLD &&
+          provenance.age_hair_loss_began === 'empty'
+        ) {
+          get().setField('age_hair_loss_began', input.age_hair_loss_began.value, 'spoken');
+          summary.age_hair_loss_began = input.age_hair_loss_began.value;
+        }
+
+        if (
+          input.duration &&
+          input.duration.confidence >= CONFIDENCE_THRESHOLD &&
+          provenance.duration === 'empty'
+        ) {
+          get().setField('duration', input.duration.value, 'spoken');
+          summary.duration = input.duration.value;
+        }
+
+        if (
+          input.family_history &&
+          input.family_history.confidence >= CONFIDENCE_THRESHOLD &&
+          provenance.family_history === 'empty'
+        ) {
+          const value = sanitizeFamilyHistory(input.family_history.value);
+          get().setField('family_history', value, 'spoken');
+          summary.family_history = value;
+        }
+
+        if (
+          input.pattern &&
+          input.pattern.confidence >= CONFIDENCE_THRESHOLD &&
+          provenance.pattern === 'empty'
+        ) {
+          get().setField('pattern', input.pattern.value, 'spoken');
+          summary.pattern = input.pattern.value;
+        }
+
+        if (
+          input.past_6_months &&
+          input.past_6_months.confidence >= CONFIDENCE_THRESHOLD &&
+          provenance.past_6_months === 'empty'
+        ) {
+          get().setField('past_6_months', input.past_6_months.value, 'spoken');
+          summary.past_6_months = input.past_6_months.value;
+        }
+
+        if (
+          input.products &&
+          input.products.confidence >= CONFIDENCE_THRESHOLD &&
+          input.products.value.length > 0
+        ) {
+          // First mention this session: lay down the same false/baseline
+          // every row gets when the gateway is tapped "yes" by hand, so the
+          // whole table reads as answered once the mentioned rows are set.
+          if (get().productsGateway === null) {
+            set(state => ({
+              productsGateway: true,
+              form: {
+                ...state.form,
+                products: Object.fromEntries(
+                  (Object.keys(state.form.products) as (keyof Products)[]).map(key => [
+                    key,
+                    { used: false, duration: null, helped: null, side_effects: null } satisfies ProductEntry,
+                  ])
+                ) as unknown as Products,
+              },
+              provenance: {
+                ...state.provenance,
+                products: Object.fromEntries(
+                  (Object.keys(state.provenance.products) as (keyof Products)[]).map(key => [
+                    key,
+                    { used: 'spoken', duration: E, helped: E, side_effects: E },
+                  ])
+                ) as ProvenanceMap['products'],
+              },
+            }));
+          }
+          const mentioned: (keyof Products)[] = [];
+          for (const row of input.products.value) {
+            get().setProductCell(row, 'used', true, 'spoken');
+            mentioned.push(row);
+          }
+          summary.products = mentioned;
+        }
+
+        return summary;
+      },
+
+      clearSpokenField: key => {
+        switch (key) {
+          case 'age_hair_loss_began':
+            get().setField('age_hair_loss_began', null, 'empty');
+            break;
+          case 'duration':
+            get().setField('duration', null, 'empty');
+            break;
+          case 'family_history':
+            get().setField('family_history', [], 'empty');
+            break;
+          case 'pattern':
+            get().setField('pattern', [], 'empty');
+            break;
+          case 'past_6_months':
+            get().setField('past_6_months', [], 'empty');
+            break;
+          case 'products':
+            get().setProductsGateway(null);
+            break;
+        }
+      },
 
       getFilledForm: () => get().form,
 

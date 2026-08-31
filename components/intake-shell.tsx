@@ -31,20 +31,18 @@ import { Q14Describe } from '@/components/questions/q14-describe';
 import { Q15SampleType } from '@/components/questions/q15-sample-type';
 import { Q16Consent } from '@/components/questions/q16-consent';
 import { CompletionScreen } from '@/components/completion-screen';
+import { VoiceOpening } from '@/components/questions/voice-opening';
+import { VoiceSecondCapture } from '@/components/questions/voice-second-capture';
+import { VoiceConfirmation } from '@/components/voice-confirmation';
+import { PRODUCT_ROWS } from '@/lib/product-labels';
+import { countVoiceScopedFilled, type AppliedSpokenSummary, type SpokenFieldKey } from '@/lib/intake-store';
 import type { Products, Procedures, IntakeForm } from '@/lib/types';
+import type { SpokenFieldInput } from '@/lib/voice-schema';
 
 type CardSpec = { id: string; component: React.FC };
 
 // Row order matches lib/schema.json exactly — this drives both the "which
-// products/procedures" pickers and the order their detail cards appear in.
-const PRODUCT_ROWS: { key: keyof Products; label: string }[] = [
-  { key: 'otc_medicated_shampoos', label: 'OTC/Medicated Shampoos' },
-  { key: 'hair_oils_serums', label: 'Hair Oils/Serums' },
-  { key: 'topical_minoxidil', label: 'Topical Minoxidil' },
-  { key: 'oral_minoxidil', label: 'Oral Minoxidil' },
-  { key: 'supplements', label: 'Supplements' },
-];
-
+// procedures" picker and the order its detail cards appear in.
 const PROCEDURE_ROWS: { key: keyof Procedures; label: string }[] = [
   { key: 'prp_gfc_iprf', label: 'PRP/GFC/iPRF' },
   { key: 'stem_cells_exosomes', label: 'Stem Cells/Exosomes' },
@@ -68,6 +66,10 @@ const PROCEDURE_DETAIL_CARDS = Object.fromEntries(
 // follow-ups) are inserted into the sequence only when their parent answer
 // warrants them. This lets the shell stay a flat array while still giving
 // each sub-question its own navigated step.
+//
+// The voiceScoped* flags skip a card outright once the opening/second voice
+// capture has already answered it (provenance 'spoken') — never for a
+// tapped answer, so normal tap-through navigation is untouched.
 function buildCards(
   smoking: boolean | null,
   salon: boolean | null,
@@ -75,20 +77,31 @@ function buildCards(
   products: IntakeForm['products'],
   proceduresGateway: boolean | null,
   procedures: IntakeForm['procedures'],
-  pastTreatmentSideEffects: boolean | null
+  pastTreatmentSideEffects: boolean | null,
+  voiceScopedAge: boolean,
+  voiceScopedDuration: boolean,
+  voiceScopedFamilyHistory: boolean,
+  voiceScopedPattern: boolean,
+  voiceScopedPast6Months: boolean,
+  voiceScopedProducts: boolean
 ): CardSpec[] {
-  const cards: CardSpec[] = [
-    { id: 'q1', component: Q1Age },
-    { id: 'q2', component: Q2Duration },
-    { id: 'q3', component: Q3Family },
-    { id: 'q4', component: Q4Pattern },
+  const cards: CardSpec[] = [];
+
+  if (!voiceScopedAge) cards.push({ id: 'q1', component: Q1Age });
+  if (!voiceScopedDuration) cards.push({ id: 'q2', component: Q2Duration });
+  if (!voiceScopedFamilyHistory) cards.push({ id: 'q3', component: Q3Family });
+  if (!voiceScopedPattern) cards.push({ id: 'q4', component: Q4Pattern });
+
+  cards.push(
     { id: 'q5', component: Q5Conditions },
     { id: 'q67', component: Q67Hormonal },
     { id: 'q8', component: Q8Acne },
     { id: 'q9', component: Q9Hair },
-    { id: 'q10', component: Q10Triggers },
-    { id: 'q11-smoking', component: Q11Smoking },
-  ];
+  );
+
+  if (!voiceScopedPast6Months) cards.push({ id: 'q10', component: Q10Triggers });
+
+  cards.push({ id: 'q11-smoking', component: Q11Smoking });
 
   if (smoking === true) {
     cards.push({ id: 'q11-severity', component: Q11Severity });
@@ -106,10 +119,16 @@ function buildCards(
     cards.push({ id: 'q11-salon-detail', component: Q11SalonDetail });
   }
 
-  cards.push({ id: 'q12-gateway', component: Q12ProductsGateway });
+  if (!voiceScopedProducts) {
+    cards.push({ id: 'q12-gateway', component: Q12ProductsGateway });
+    if (productsGateway === true) {
+      cards.push({ id: 'q12-which', component: Q12ProductsWhich });
+    }
+  }
 
+  // Detail cards (duration/helped/side-effects) are never voice-filled —
+  // they always show for any row marked used, regardless of how "used" got set.
   if (productsGateway === true) {
-    cards.push({ id: 'q12-which', component: Q12ProductsWhich });
     for (const { key } of PRODUCT_ROWS) {
       if (products[key].used === true) {
         cards.push({ id: `q12-detail-${key}`, component: PRODUCT_DETAIL_CARDS[key] });
@@ -144,6 +163,18 @@ function buildCards(
 
 type Direction = 'forward' | 'back';
 
+type VoicePhase = 'opening' | 'confirming' | 'secondary' | 'done';
+
+// Where "tap to correct" on the confirmation card should land the patient.
+const CARD_ID_FOR_SPOKEN_FIELD: Record<SpokenFieldKey, string> = {
+  age_hair_loss_began: 'q1',
+  duration: 'q2',
+  family_history: 'q3',
+  pattern: 'q4',
+  past_6_months: 'q10',
+  products: 'q12-gateway',
+};
+
 export function IntakeShell() {
   const progressPct = useIntakeStore(s =>
     Math.round(computeCompleteness(s.form, s.provenance).fraction * 100)
@@ -156,6 +187,25 @@ export function IntakeShell() {
   const procedures = useIntakeStore(s => s.form.procedures);
   const pastTreatmentSideEffects = useIntakeStore(s => s.form.past_treatment_side_effects);
 
+  const ageProv = useIntakeStore(s => s.provenance.age_hair_loss_began);
+  const durationProv = useIntakeStore(s => s.provenance.duration);
+  const familyHistoryProv = useIntakeStore(s => s.provenance.family_history);
+  const patternProv = useIntakeStore(s => s.provenance.pattern);
+  const past6moProv = useIntakeStore(s => s.provenance.past_6_months);
+  const productsProv = useIntakeStore(s => s.provenance.products);
+
+  const voiceScopedAge = ageProv === 'spoken';
+  const voiceScopedDuration = durationProv === 'spoken';
+  const voiceScopedFamilyHistory = familyHistoryProv === 'spoken';
+  const voiceScopedPattern = patternProv === 'spoken';
+  const voiceScopedPast6Months = past6moProv === 'spoken';
+  const voiceScopedProducts = (Object.values(productsProv) as { used: string }[]).some(
+    r => r.used === 'spoken'
+  );
+
+  const applySpokenFields = useIntakeStore(s => s.applySpokenFields);
+  const clearSpokenField = useIntakeStore(s => s.clearSpokenField);
+
   const cards = useMemo(
     () =>
       buildCards(
@@ -165,16 +215,103 @@ export function IntakeShell() {
         products,
         proceduresGateway,
         procedures,
-        pastTreatmentSideEffects
+        pastTreatmentSideEffects,
+        voiceScopedAge,
+        voiceScopedDuration,
+        voiceScopedFamilyHistory,
+        voiceScopedPattern,
+        voiceScopedPast6Months,
+        voiceScopedProducts
       ),
-    [smoking, salon, productsGateway, products, proceduresGateway, procedures, pastTreatmentSideEffects]
+    [
+      smoking,
+      salon,
+      productsGateway,
+      products,
+      proceduresGateway,
+      procedures,
+      pastTreatmentSideEffects,
+      voiceScopedAge,
+      voiceScopedDuration,
+      voiceScopedFamilyHistory,
+      voiceScopedPattern,
+      voiceScopedPast6Months,
+      voiceScopedProducts,
+    ]
   );
 
-  const [currentId, setCurrentId] = useState<string>(cards[0].id);
+  const [currentId, setCurrentId] = useState<string>(cards[0]?.id ?? 'q5');
   const [prevId, setPrevId] = useState<string | null>(null);
   const [direction, setDirection] = useState<Direction>('forward');
   const [isAnimating, setIsAnimating] = useState(false);
   const [completed, setCompleted] = useState(false);
+
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>('opening');
+  const [openingSummary, setOpeningSummary] = useState<AppliedSpokenSummary>({});
+
+  // A fresh, non-memoized recomputation of the card list from the live
+  // store — used only when transitioning out of the voice phases, where a
+  // just-applied store write (e.g. applySpokenFields) hasn't flowed through
+  // to the `cards` useMemo above yet within the same synchronous handler.
+  function computeFreshCards(): CardSpec[] {
+    const s = useIntakeStore.getState();
+    return buildCards(
+      s.form.habits.smoking,
+      s.form.habits.salon_treatments,
+      s.productsGateway,
+      s.form.products,
+      s.proceduresGateway,
+      s.form.procedures,
+      s.form.past_treatment_side_effects,
+      s.provenance.age_hair_loss_began === 'spoken',
+      s.provenance.duration === 'spoken',
+      s.provenance.family_history === 'spoken',
+      s.provenance.pattern === 'spoken',
+      s.provenance.past_6_months === 'spoken',
+      (Object.values(s.provenance.products) as { used: string }[]).some(r => r.used === 'spoken')
+    );
+  }
+
+  function enterNormalFlow(jumpToId?: string) {
+    const fresh = computeFreshCards();
+    const target = jumpToId && fresh.some(c => c.id === jumpToId) ? jumpToId : fresh[0]?.id;
+    if (target) setCurrentId(target);
+    setPrevId(null);
+    setIsAnimating(false);
+    setVoicePhase('done');
+  }
+
+  function handleOpeningCaptured(fields: SpokenFieldInput) {
+    const summary = applySpokenFields(fields);
+    if (Object.keys(summary).length === 0) {
+      // Nothing cleared the confidence bar — skip the empty confirmation
+      // screen and go straight to the second-capture decision.
+      decideAfterCapture();
+      return;
+    }
+    setOpeningSummary(summary);
+    setVoicePhase('confirming');
+  }
+
+  function decideAfterCapture() {
+    const s = useIntakeStore.getState();
+    const filled = countVoiceScopedFilled(s.form, s.provenance);
+    if (filled < 10) {
+      setVoicePhase('secondary');
+    } else {
+      enterNormalFlow();
+    }
+  }
+
+  function handleSecondCaptured(fields: SpokenFieldInput) {
+    applySpokenFields(fields);
+    enterNormalFlow();
+  }
+
+  function handleCorrect(key: SpokenFieldKey) {
+    clearSpokenField(key);
+    enterNormalFlow(CARD_ID_FOR_SPOKEN_FIELD[key]);
+  }
 
   const currentIdx = cards.findIndex(c => c.id === currentId);
 
@@ -221,6 +358,30 @@ export function IntakeShell() {
 
   const CurrentCard = cards[currentIdx]?.component ?? null;
   const PrevCard = prevId !== null ? (cards.find(c => c.id === prevId)?.component ?? null) : null;
+
+  if (voicePhase === 'opening') {
+    return <VoiceOpening onSkip={() => enterNormalFlow()} onCaptured={handleOpeningCaptured} />;
+  }
+
+  if (voicePhase === 'confirming') {
+    return (
+      <VoiceConfirmation summary={openingSummary} onContinue={decideAfterCapture} onCorrect={handleCorrect} />
+    );
+  }
+
+  if (voicePhase === 'secondary') {
+    return (
+      <VoiceSecondCapture
+        ageOrDurationMissing={!voiceScopedAge || !voiceScopedDuration}
+        familyHistoryMissing={!voiceScopedFamilyHistory}
+        patternMissing={!voiceScopedPattern}
+        past6MonthsMissing={!voiceScopedPast6Months}
+        productsMissing={!voiceScopedProducts}
+        onSkip={() => enterNormalFlow()}
+        onCaptured={handleSecondCaptured}
+      />
+    );
+  }
 
   if (completed) {
     return <CompletionScreen />;
