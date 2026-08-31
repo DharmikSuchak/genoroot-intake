@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { AppliedSpokenSummary, SpokenFieldKey } from '@/lib/intake-store';
 import { PRODUCT_ROWS } from '@/lib/product-labels';
 
@@ -7,6 +8,7 @@ interface VoiceConfirmationProps {
   summary: AppliedSpokenSummary;
   onContinue: () => void;
   onCorrect: (key: SpokenFieldKey) => void;
+  onAcceptAgeSuggestion: () => void;
 }
 
 const PRODUCT_LABEL_BY_KEY = Object.fromEntries(PRODUCT_ROWS.map(r => [r.key, r.label]));
@@ -50,10 +52,17 @@ const ROW_ORDER: SpokenFieldKey[] = [
   'products',
 ];
 
-export function VoiceConfirmation({ summary, onContinue, onCorrect }: VoiceConfirmationProps) {
+export function VoiceConfirmation({ summary, onContinue, onCorrect, onAcceptAgeSuggestion }: VoiceConfirmationProps) {
+  const [ageAccepted, setAgeAccepted] = useState(false);
+
   const rows = ROW_ORDER.map(key => ({ key, row: describeRow(key, summary) })).filter(
     (r): r is { key: SpokenFieldKey; row: { label: string; detail: string } } => r.row !== null
   );
+
+  function handleAcceptAge() {
+    onAcceptAgeSuggestion();
+    setAgeAccepted(true);
+  }
 
   return (
     <div className="flex flex-col min-h-full px-4 py-8 bg-slate-50">
@@ -85,6 +94,46 @@ export function VoiceConfirmation({ summary, onContinue, onCorrect }: VoiceConfi
               <span className="text-sm text-sky-600 shrink-0 pt-1">Edit</span>
             </button>
           ))}
+
+          {summary.ageSuggestion !== undefined && (
+            <div
+              className="flex flex-col gap-3 w-full rounded-2xl border-2 px-5 py-4"
+              style={{
+                borderColor: ageAccepted ? '#15803d' : '#f59e0b',
+                backgroundColor: ageAccepted ? '#dcfce7' : '#fef3c7',
+              }}
+            >
+              <span
+                className="text-sm font-semibold uppercase tracking-wider"
+                style={{ color: ageAccepted ? '#15803d' : '#b45309' }}
+              >
+                One more thing
+              </span>
+              <span className="text-base font-medium text-slate-800">
+                Did your hair loss begin around age {summary.ageSuggestion}?
+              </span>
+              {ageAccepted ? (
+                <span className="text-sm font-medium" style={{ color: '#15803d' }}>
+                  Confirmed
+                </span>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleAcceptAge}
+                    className="flex-1 h-12 rounded-xl font-medium text-sm text-white bg-sky-500 active:bg-sky-600 transition-colors"
+                  >
+                    Yes, that&apos;s right
+                  </button>
+                  <button
+                    onClick={() => onCorrect('age_hair_loss_began')}
+                    className="flex-1 h-12 rounded-xl font-medium text-sm border border-slate-200 text-slate-600 bg-white active:bg-slate-50 transition-colors"
+                  >
+                    Let me say
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

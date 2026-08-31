@@ -170,6 +170,45 @@ export function computeCompleteness(
 }
 
 // ---------------------------------------------------------------------------
+// Provenance summary — for the completion screen's "N tapped, N spoken, N
+// inferred" line. Counts leaf fields (including per-row table cells), not
+// questions, so it reflects the shape of the provenance map itself.
+// ---------------------------------------------------------------------------
+
+export interface ProvenanceSummary {
+  tapped: number;
+  spoken: number;
+  inferredOrConfirmed: number;
+}
+
+function isProvenanceLeaf(value: unknown): value is Provenance {
+  return (
+    value === 'empty' ||
+    value === 'tapped' ||
+    value === 'spoken' ||
+    value === 'inferred' ||
+    value === 'confirmed'
+  );
+}
+
+export function summarizeProvenance(prov: ProvenanceMap): ProvenanceSummary {
+  const summary: ProvenanceSummary = { tapped: 0, spoken: 0, inferredOrConfirmed: 0 };
+
+  function visit(node: unknown): void {
+    if (isProvenanceLeaf(node)) {
+      if (node === 'tapped') summary.tapped += 1;
+      else if (node === 'spoken') summary.spoken += 1;
+      else if (node === 'inferred' || node === 'confirmed') summary.inferredOrConfirmed += 1;
+    } else if (node && typeof node === 'object') {
+      for (const child of Object.values(node)) visit(child);
+    }
+  }
+
+  visit(prov);
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
 // Voice pre-fill — the fields the opening/second voice capture can write.
 // ---------------------------------------------------------------------------
 
@@ -181,9 +220,62 @@ export interface AppliedSpokenSummary {
   pattern?: PatternOption[];
   past_6_months?: Past6MonthsOption[];
   products?: (keyof Products)[];
+  /**
+   * An age the patient mentioned that scored below the auto-fill confidence
+   * bar (commonly their current age rather than a clearly-stated onset age)
+   * — written to the store as 'inferred' rather than 'spoken', and offered
+   * on the confirmation card as a suggestion to accept or correct, never
+   * auto-filled silently.
+   */
+  ageSuggestion?: number;
 }
 
-export type SpokenFieldKey = keyof AppliedSpokenSummary;
+export type SpokenFieldKey = keyof Omit<AppliedSpokenSummary, 'ageSuggestion'>;
+
+/** Provenance values that mean "the voice pipeline already has an answer
+ *  here" — spoken (auto-filled), inferred (suggested, not yet confirmed) or
+ *  confirmed (suggested and accepted). Deliberately excludes 'tapped', since
+ *  that only happens live during the normal card flow and checking against
+ *  it there would risk removing the card the patient is actively on. */
+export function voiceAnswered(prov: Provenance): boolean {
+  return prov === 'spoken' || prov === 'inferred' || prov === 'confirmed';
+}
+
+export interface VoiceScopedMissing {
+  age: boolean;
+  duration: boolean;
+  familyHistory: boolean;
+  pattern: boolean;
+  past6Months: boolean;
+  products: boolean;
+}
+
+/**
+ * Which of the six voice-fillable fields are genuinely still empty right
+ * now — the single source of truth for both the second-capture nudge text
+ * and the decision to skip the second capture entirely.
+ */
+export function computeVoiceScopedMissing(input: {
+  ageProvenance: Provenance;
+  durationProvenance: Provenance;
+  familyHistoryProvenance: Provenance;
+  patternProvenance: Provenance;
+  past6MonthsProvenance: Provenance;
+  productsGateway: boolean | null;
+}): VoiceScopedMissing {
+  return {
+    age: input.ageProvenance === 'empty',
+    duration: input.durationProvenance === 'empty',
+    familyHistory: input.familyHistoryProvenance === 'empty',
+    pattern: input.patternProvenance === 'empty',
+    past6Months: input.past6MonthsProvenance === 'empty',
+    products: input.productsGateway === null,
+  };
+}
+
+export function hasVoiceScopedMissing(missing: VoiceScopedMissing): boolean {
+  return Object.values(missing).some(Boolean);
+}
 
 const FAMILY_HISTORY_NONE: FamilyHistoryOption = 'No known family history';
 
@@ -268,6 +360,10 @@ interface IntakeActions {
   /** Resets one voice-scoped field back to empty, e.g. before jumping the
    *  patient to that question to correct it by hand. */
   clearSpokenField: (key: SpokenFieldKey) => void;
+
+  /** Accepts a sub-threshold age suggestion as-is: same value, provenance
+   *  moves from 'inferred' to 'confirmed'. */
+  confirmAgeSuggestion: () => void;
 
   /** Returns a clean IntakeForm object with no provenance metadata. */
   getFilledForm: () => IntakeForm;
@@ -426,13 +522,18 @@ export const useIntakeStore = create<IntakeStore>()(
         const summary: AppliedSpokenSummary = {};
         const { provenance } = get();
 
-        if (
-          input.age_hair_loss_began &&
-          input.age_hair_loss_began.confidence >= CONFIDENCE_THRESHOLD &&
-          provenance.age_hair_loss_began === 'empty'
-        ) {
-          get().setField('age_hair_loss_began', input.age_hair_loss_began.value, 'spoken');
-          summary.age_hair_loss_began = input.age_hair_loss_began.value;
+        if (input.age_hair_loss_began && provenance.age_hair_loss_began === 'empty') {
+          const { value, confidence } = input.age_hair_loss_began;
+          if (confidence >= CONFIDENCE_THRESHOLD) {
+            get().setField('age_hair_loss_began', value, 'spoken');
+            summary.age_hair_loss_began = value;
+          } else {
+            // Below the auto-fill bar (e.g. the patient's current age rather
+            // than a clearly-stated onset age) — still worth surfacing as a
+            // suggestion rather than dropping silently.
+            get().setField('age_hair_loss_began', value, 'inferred');
+            summary.ageSuggestion = value;
+          }
         }
 
         if (
@@ -534,6 +635,13 @@ export const useIntakeStore = create<IntakeStore>()(
           case 'products':
             get().setProductsGateway(null);
             break;
+        }
+      },
+
+      confirmAgeSuggestion: () => {
+        const { form } = get();
+        if (form.age_hair_loss_began !== null) {
+          get().setField('age_hair_loss_began', form.age_hair_loss_began, 'confirmed');
         }
       },
 

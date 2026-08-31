@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { VoiceCaptureCard } from '@/components/voice-capture-card';
 import type { SpokenFieldInput } from '@/lib/voice-schema';
 
@@ -17,7 +17,14 @@ interface VoiceOpeningProps {
 }
 
 export function VoiceOpening({ onSkip, onCaptured }: VoiceOpeningProps) {
-  const [example] = useState(() => EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
+  // Picking randomly during the initial render would make the server-rendered
+  // HTML and the client's first render disagree (Math.random() isn't
+  // deterministic across the two), so this app starts everyone on the same
+  // example and rotates to a random one only after hydration completes.
+  const [example, setExample] = useState(EXAMPLES[0]);
+  useEffect(() => {
+    setExample(EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)]);
+  }, []);
 
   return (
     <VoiceCaptureCard

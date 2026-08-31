@@ -35,8 +35,15 @@ import { VoiceOpening } from '@/components/questions/voice-opening';
 import { VoiceSecondCapture } from '@/components/questions/voice-second-capture';
 import { VoiceConfirmation } from '@/components/voice-confirmation';
 import { PRODUCT_ROWS } from '@/lib/product-labels';
-import { countVoiceScopedFilled, type AppliedSpokenSummary, type SpokenFieldKey } from '@/lib/intake-store';
-import type { Products, Procedures, IntakeForm } from '@/lib/types';
+import {
+  countVoiceScopedFilled,
+  computeVoiceScopedMissing,
+  hasVoiceScopedMissing,
+  voiceAnswered,
+  type AppliedSpokenSummary,
+  type SpokenFieldKey,
+} from '@/lib/intake-store';
+import type { Products, Procedures, IntakeForm, Provenance } from '@/lib/types';
 import type { SpokenFieldInput } from '@/lib/voice-schema';
 
 type CardSpec = { id: string; component: React.FC };
@@ -194,17 +201,32 @@ export function IntakeShell() {
   const past6moProv = useIntakeStore(s => s.provenance.past_6_months);
   const productsProv = useIntakeStore(s => s.provenance.products);
 
-  const voiceScopedAge = ageProv === 'spoken';
-  const voiceScopedDuration = durationProv === 'spoken';
-  const voiceScopedFamilyHistory = familyHistoryProv === 'spoken';
-  const voiceScopedPattern = patternProv === 'spoken';
-  const voiceScopedPast6Months = past6moProv === 'spoken';
-  const voiceScopedProducts = (Object.values(productsProv) as { used: string }[]).some(
-    r => r.used === 'spoken'
+  // voiceAnswered covers 'spoken' (auto-filled), 'inferred' (suggested, not
+  // yet confirmed) and 'confirmed' (suggested and accepted) — anything the
+  // voice pipeline already has an answer for, so the card doesn't get asked
+  // again. Deliberately never matches 'tapped', since that only happens
+  // live during the normal flow.
+  const voiceScopedAge = voiceAnswered(ageProv);
+  const voiceScopedDuration = voiceAnswered(durationProv);
+  const voiceScopedFamilyHistory = voiceAnswered(familyHistoryProv);
+  const voiceScopedPattern = voiceAnswered(patternProv);
+  const voiceScopedPast6Months = voiceAnswered(past6moProv);
+  const voiceScopedProducts = (Object.values(productsProv) as { used: Provenance }[]).some(r =>
+    voiceAnswered(r.used)
   );
+
+  const voiceScopedMissing = computeVoiceScopedMissing({
+    ageProvenance: ageProv,
+    durationProvenance: durationProv,
+    familyHistoryProvenance: familyHistoryProv,
+    patternProvenance: patternProv,
+    past6MonthsProvenance: past6moProv,
+    productsGateway,
+  });
 
   const applySpokenFields = useIntakeStore(s => s.applySpokenFields);
   const clearSpokenField = useIntakeStore(s => s.clearSpokenField);
+  const confirmAgeSuggestion = useIntakeStore(s => s.confirmAgeSuggestion);
 
   const cards = useMemo(
     () =>
@@ -263,12 +285,12 @@ export function IntakeShell() {
       s.proceduresGateway,
       s.form.procedures,
       s.form.past_treatment_side_effects,
-      s.provenance.age_hair_loss_began === 'spoken',
-      s.provenance.duration === 'spoken',
-      s.provenance.family_history === 'spoken',
-      s.provenance.pattern === 'spoken',
-      s.provenance.past_6_months === 'spoken',
-      (Object.values(s.provenance.products) as { used: string }[]).some(r => r.used === 'spoken')
+      voiceAnswered(s.provenance.age_hair_loss_began),
+      voiceAnswered(s.provenance.duration),
+      voiceAnswered(s.provenance.family_history),
+      voiceAnswered(s.provenance.pattern),
+      voiceAnswered(s.provenance.past_6_months),
+      (Object.values(s.provenance.products) as { used: Provenance }[]).some(r => voiceAnswered(r.used))
     );
   }
 
@@ -295,6 +317,20 @@ export function IntakeShell() {
 
   function decideAfterCapture() {
     const s = useIntakeStore.getState();
+    const missing = computeVoiceScopedMissing({
+      ageProvenance: s.provenance.age_hair_loss_began,
+      durationProvenance: s.provenance.duration,
+      familyHistoryProvenance: s.provenance.family_history,
+      patternProvenance: s.provenance.pattern,
+      past6MonthsProvenance: s.provenance.past_6_months,
+      productsGateway: s.productsGateway,
+    });
+    // Nothing left for a second capture to even ask about — offering one
+    // would just show an empty "anything else?" with no real nudge.
+    if (!hasVoiceScopedMissing(missing)) {
+      enterNormalFlow();
+      return;
+    }
     const filled = countVoiceScopedFilled(s.form, s.provenance);
     if (filled < 10) {
       setVoicePhase('secondary');
@@ -365,21 +401,18 @@ export function IntakeShell() {
 
   if (voicePhase === 'confirming') {
     return (
-      <VoiceConfirmation summary={openingSummary} onContinue={decideAfterCapture} onCorrect={handleCorrect} />
+      <VoiceConfirmation
+        summary={openingSummary}
+        onContinue={decideAfterCapture}
+        onCorrect={handleCorrect}
+        onAcceptAgeSuggestion={confirmAgeSuggestion}
+      />
     );
   }
 
   if (voicePhase === 'secondary') {
     return (
-      <VoiceSecondCapture
-        ageOrDurationMissing={!voiceScopedAge || !voiceScopedDuration}
-        familyHistoryMissing={!voiceScopedFamilyHistory}
-        patternMissing={!voiceScopedPattern}
-        past6MonthsMissing={!voiceScopedPast6Months}
-        productsMissing={!voiceScopedProducts}
-        onSkip={() => enterNormalFlow()}
-        onCaptured={handleSecondCaptured}
-      />
+      <VoiceSecondCapture missing={voiceScopedMissing} onSkip={() => enterNormalFlow()} onCaptured={handleSecondCaptured} />
     );
   }
 

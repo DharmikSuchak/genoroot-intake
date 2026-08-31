@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { convertToWavBlob } from '@/lib/audio-to-wav';
 import type { SpokenFieldInput } from '@/lib/voice-schema';
 
 const RECORD_SECONDS = 30;
@@ -24,8 +25,9 @@ function pickSupportedMimeType(): string | undefined {
   return undefined;
 }
 
-async function fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
-  return fetch(input, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+async function fetchWithTimeout(input: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  return fetch(input, { ...init, signal: AbortSignal.any([timeoutSignal, signal]) });
 }
 
 export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: VoiceCaptureCardProps) {
@@ -37,6 +39,11 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Aborts any in-flight transcribe/extract call and blocks any further
+  // state updates the moment the patient taps Skip — so a slow or late
+  // response can never resurrect this screen after they've moved on, and
+  // "Skip, I'll just tap" stays genuinely immediate throughout extraction.
+  const skipControllerRef = useRef(new AbortController());
 
   useEffect(() => {
     return () => {
@@ -46,13 +53,21 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
     };
   }, []);
 
+  function handleSkipTap() {
+    skipControllerRef.current.abort();
+    onSkip();
+  }
+
   function fallbackToTapFlow(message: string) {
+    if (skipControllerRef.current.signal.aborted) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
     setErrorMessage(message);
     setState('error');
     // The patient must never be stuck here — hand off to the normal tap
     // flow shortly after showing the brief reason.
-    fallbackTimerRef.current = setTimeout(onSkip, 1800);
+    fallbackTimerRef.current = setTimeout(() => {
+      if (!skipControllerRef.current.signal.aborted) onSkip();
+    }, 1800);
   }
 
   async function startRecording() {
@@ -102,11 +117,16 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
   }
 
   async function processRecording(blob: Blob) {
+    const signal = skipControllerRef.current.signal;
     try {
-      const form = new FormData();
-      form.append('audio', blob, 'recording.webm');
+      // Sarvam rejects the webm/opus (or mp4) audio MediaRecorder actually
+      // produces — normalize to 16-bit PCM WAV before it ever leaves the browser.
+      const wavBlob = await convertToWavBlob(blob);
 
-      const transcribeRes = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: form });
+      const form = new FormData();
+      form.append('audio', wavBlob, 'recording.wav');
+
+      const transcribeRes = await fetchWithTimeout('/api/transcribe', { method: 'POST', body: form }, signal);
       if (!transcribeRes.ok) {
         throw new Error('transcribe request failed');
       }
@@ -115,16 +135,23 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
         throw new Error('empty transcript');
       }
 
-      const extractRes = await fetchWithTimeout('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript }),
-      });
+      const extractRes = await fetchWithTimeout(
+        '/api/extract',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript }),
+        },
+        signal
+      );
       if (!extractRes.ok) {
         throw new Error('extract request failed');
       }
       const { fields } = (await extractRes.json()) as { fields?: SpokenFieldInput };
 
+      // The patient may have tapped Skip while this was in flight — don't
+      // resurrect the voice flow with a result that arrived after they left.
+      if (signal.aborted) return;
       onCaptured(fields ?? {}, transcript);
     } catch {
       fallbackToTapFlow("Couldn't catch that — let's go through it together.");
@@ -202,9 +229,8 @@ export function VoiceCaptureCard({ heading, children, onSkip, onCaptured }: Voic
       </div>
 
       <button
-        onClick={onSkip}
-        disabled={state === 'processing'}
-        className="w-full h-14 rounded-xl font-medium text-base text-slate-500 border border-slate-200 bg-white active:bg-slate-50 transition-colors disabled:opacity-60"
+        onClick={handleSkipTap}
+        className="w-full h-14 rounded-xl font-medium text-base text-slate-500 border border-slate-200 bg-white active:bg-slate-50 transition-colors"
       >
         Skip, I&apos;ll just tap
       </button>

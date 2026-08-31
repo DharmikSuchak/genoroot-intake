@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const sarvamForm = new FormData();
-    sarvamForm.append('file', file, file.name || 'recording.webm');
+    // The client always sends 16-bit PCM WAV (see lib/audio-to-wav.ts) —
+    // Sarvam rejects the webm/opus MediaRecorder actually records.
+    sarvamForm.append('file', file, file.name || 'recording.wav');
     sarvamForm.append('model', 'saaras:v3');
     // codemix mode keeps English words in English and Indic words in native
     // script, which is exactly what natural Hinglish speech looks like —
@@ -59,11 +61,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      return NextResponse.json(
-        { error: `Speech-to-text request failed (${res.status}): ${errText.slice(0, 300)}` },
-        { status: 502 }
-      );
+      // Full detail (status, body, whatever Sarvam actually complained
+      // about) is logged server-side for diagnosis — never sent to the
+      // browser, which only needs to know to fall back to the tap flow.
+      const errText = await res.text().catch(() => '<no body>');
+      console.error(`[transcribe] Sarvam speech-to-text failed (${res.status}):`, errText);
+      return NextResponse.json({ error: 'Transcription failed.' }, { status: 502 });
     }
 
     const data = await res.json();
@@ -74,9 +77,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ transcript });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Transcription failed.' },
-      { status: 502 }
-    );
+    console.error('[transcribe] Unexpected error calling Sarvam:', err);
+    return NextResponse.json({ error: 'Transcription failed.' }, { status: 502 });
   }
 }

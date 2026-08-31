@@ -1,30 +1,33 @@
 'use client';
 
 import { VoiceCaptureCard } from '@/components/voice-capture-card';
+import type { VoiceScopedMissing } from '@/lib/intake-store';
 import type { SpokenFieldInput } from '@/lib/voice-schema';
 
 interface VoiceSecondCaptureProps {
-  ageOrDurationMissing: boolean;
-  familyHistoryMissing: boolean;
-  patternMissing: boolean;
-  past6MonthsMissing: boolean;
-  productsMissing: boolean;
+  missing: VoiceScopedMissing;
   onSkip: () => void;
   onCaptured: (fields: SpokenFieldInput, transcript: string) => void;
 }
 
+// Order matters — this is also the order areas appear in the nudge.
+const AREA_LABELS: { key: keyof VoiceScopedMissing; label: string }[] = [
+  { key: 'age', label: 'when it started' },
+  { key: 'duration', label: "how long it's been going on" },
+  { key: 'familyHistory', label: 'family history' },
+  { key: 'pattern', label: 'what it looks like' },
+  { key: 'past6Months', label: 'anything stressful lately' },
+  { key: 'products', label: "anything you've tried" },
+];
+
 /**
- * Names broad areas still missing — never the specific questions — so the
- * nudge reads like a person asking a follow-up, not a checklist.
+ * Names broad areas still missing — computed straight from the fields that
+ * are actually still empty, never a fixed list — so the nudge reads like a
+ * person asking a follow-up, not a checklist, and never re-asks about
+ * something already answered.
  */
-function missingAreas(props: VoiceSecondCaptureProps): string[] {
-  const areas: string[] = [];
-  if (props.ageOrDurationMissing) areas.push('when this started');
-  if (props.familyHistoryMissing) areas.push('family history');
-  if (props.patternMissing) areas.push('what it looks like');
-  if (props.past6MonthsMissing) areas.push('anything stressful lately');
-  if (props.productsMissing) areas.push("anything you've tried");
-  return areas;
+function missingAreas(missing: VoiceScopedMissing): string[] {
+  return AREA_LABELS.filter(({ key }) => missing[key]).map(({ label }) => label);
 }
 
 function joinNudge(areas: string[]): string {
@@ -35,11 +38,11 @@ function joinNudge(areas: string[]): string {
   return `Anything about ${picked[0]}, ${picked[1]}, or ${picked[2]}?`;
 }
 
-export function VoiceSecondCapture(props: VoiceSecondCaptureProps) {
-  const nudge = joinNudge(missingAreas(props));
+export function VoiceSecondCapture({ missing, onSkip, onCaptured }: VoiceSecondCaptureProps) {
+  const nudge = joinNudge(missingAreas(missing));
 
   return (
-    <VoiceCaptureCard heading="Anything else?" onSkip={props.onSkip} onCaptured={props.onCaptured}>
+    <VoiceCaptureCard heading="Anything else?" onSkip={onSkip} onCaptured={onCaptured}>
       <p className="text-base text-slate-500 leading-relaxed">{nudge}</p>
     </VoiceCaptureCard>
   );
