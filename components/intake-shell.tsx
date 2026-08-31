@@ -19,13 +19,60 @@ import { Q11WashFreq } from '@/components/questions/q11-washfreq';
 import { Q11Heating } from '@/components/questions/q11-heating';
 import { Q11Salon } from '@/components/questions/q11-salon';
 import { Q11SalonDetail } from '@/components/questions/q11-salon-detail';
+import { Q12ProductsGateway } from '@/components/questions/q12-products-gateway';
+import { Q12ProductsWhich } from '@/components/questions/q12-products-which';
+import { makeQ12ProductDetail } from '@/components/questions/q12-product-detail';
+import { Q13ProceduresGateway } from '@/components/questions/q13-procedures-gateway';
+import { Q13ProceduresWhich } from '@/components/questions/q13-procedures-which';
+import { makeQ13ProcedureDetail } from '@/components/questions/q13-procedure-detail';
+import { Q14SideEffects } from '@/components/questions/q14-side-effects';
+import { Q14Describe } from '@/components/questions/q14-describe';
+import type { Products, Procedures, IntakeForm } from '@/lib/types';
 
 type CardSpec = { id: string; component: React.FC };
 
-// Conditional cards (q11-severity, q11-salon-detail) are inserted into the
-// sequence only when their parent answer is 'true'. This lets the shell stay
-// a flat array while still giving each habit its own navigated step.
-function buildCards(smoking: boolean | null, salon: boolean | null): CardSpec[] {
+// Row order matches lib/schema.json exactly — this drives both the "which
+// products/procedures" pickers and the order their detail cards appear in.
+const PRODUCT_ROWS: { key: keyof Products; label: string }[] = [
+  { key: 'otc_medicated_shampoos', label: 'OTC/Medicated Shampoos' },
+  { key: 'hair_oils_serums', label: 'Hair Oils/Serums' },
+  { key: 'topical_minoxidil', label: 'Topical Minoxidil' },
+  { key: 'oral_minoxidil', label: 'Oral Minoxidil' },
+  { key: 'supplements', label: 'Supplements' },
+];
+
+const PROCEDURE_ROWS: { key: keyof Procedures; label: string }[] = [
+  { key: 'prp_gfc_iprf', label: 'PRP/GFC/iPRF' },
+  { key: 'stem_cells_exosomes', label: 'Stem Cells/Exosomes' },
+  { key: 'hair_transplant', label: 'Hair Transplant' },
+  { key: 'other', label: 'Other' },
+];
+
+// Detail-card components are created once at module scope (not inside
+// buildCards) so their identity stays stable across re-renders — recreating
+// a component function per render would remount the active card on every
+// unrelated store update.
+const PRODUCT_DETAIL_CARDS = Object.fromEntries(
+  PRODUCT_ROWS.map(({ key, label }) => [key, makeQ12ProductDetail(key, label)])
+) as unknown as Record<keyof Products, React.FC>;
+
+const PROCEDURE_DETAIL_CARDS = Object.fromEntries(
+  PROCEDURE_ROWS.map(({ key, label }) => [key, makeQ13ProcedureDetail(key, label)])
+) as unknown as Record<keyof Procedures, React.FC>;
+
+// Conditional cards (q11-severity, q11-salon-detail, and the Q12/Q13/Q14
+// follow-ups) are inserted into the sequence only when their parent answer
+// warrants them. This lets the shell stay a flat array while still giving
+// each sub-question its own navigated step.
+function buildCards(
+  smoking: boolean | null,
+  salon: boolean | null,
+  productsGateway: boolean | null,
+  products: IntakeForm['products'],
+  proceduresGateway: boolean | null,
+  procedures: IntakeForm['procedures'],
+  pastTreatmentSideEffects: boolean | null
+): CardSpec[] {
   const cards: CardSpec[] = [
     { id: 'q1', component: Q1Age },
     { id: 'q2', component: Q2Duration },
@@ -55,6 +102,34 @@ function buildCards(smoking: boolean | null, salon: boolean | null): CardSpec[] 
     cards.push({ id: 'q11-salon-detail', component: Q11SalonDetail });
   }
 
+  cards.push({ id: 'q12-gateway', component: Q12ProductsGateway });
+
+  if (productsGateway === true) {
+    cards.push({ id: 'q12-which', component: Q12ProductsWhich });
+    for (const { key } of PRODUCT_ROWS) {
+      if (products[key].used === true) {
+        cards.push({ id: `q12-detail-${key}`, component: PRODUCT_DETAIL_CARDS[key] });
+      }
+    }
+  }
+
+  cards.push({ id: 'q13-gateway', component: Q13ProceduresGateway });
+
+  if (proceduresGateway === true) {
+    cards.push({ id: 'q13-which', component: Q13ProceduresWhich });
+    for (const { key } of PROCEDURE_ROWS) {
+      if (procedures[key].done === true) {
+        cards.push({ id: `q13-detail-${key}`, component: PROCEDURE_DETAIL_CARDS[key] });
+      }
+    }
+  }
+
+  cards.push({ id: 'q14', component: Q14SideEffects });
+
+  if (pastTreatmentSideEffects === true) {
+    cards.push({ id: 'q14-describe', component: Q14Describe });
+  }
+
   return cards;
 }
 
@@ -66,8 +141,25 @@ export function IntakeShell() {
   );
   const smoking = useIntakeStore(s => s.form.habits.smoking);
   const salon = useIntakeStore(s => s.form.habits.salon_treatments);
+  const productsGateway = useIntakeStore(s => s.productsGateway);
+  const products = useIntakeStore(s => s.form.products);
+  const proceduresGateway = useIntakeStore(s => s.proceduresGateway);
+  const procedures = useIntakeStore(s => s.form.procedures);
+  const pastTreatmentSideEffects = useIntakeStore(s => s.form.past_treatment_side_effects);
 
-  const cards = useMemo(() => buildCards(smoking, salon), [smoking, salon]);
+  const cards = useMemo(
+    () =>
+      buildCards(
+        smoking,
+        salon,
+        productsGateway,
+        products,
+        proceduresGateway,
+        procedures,
+        pastTreatmentSideEffects
+      ),
+    [smoking, salon, productsGateway, products, proceduresGateway, procedures, pastTreatmentSideEffects]
+  );
 
   const [currentId, setCurrentId] = useState<string>(cards[0].id);
   const [prevId, setPrevId] = useState<string | null>(null);

@@ -62,6 +62,18 @@ export const EMPTY_FORM: IntakeForm = {
   consent: null,
 };
 
+// ---------------------------------------------------------------------------
+// Gateway state — Q12 and Q13 each open with a yes/no gateway card before the
+// row grid expands. The gateway answer itself isn't a schema field (the
+// per-row `used`/`done` booleans are what get submitted), so it lives here as
+// pure navigation state rather than inside `form`.
+// ---------------------------------------------------------------------------
+
+const EMPTY_GATEWAYS = {
+  productsGateway: null as boolean | null,
+  proceduresGateway: null as boolean | null,
+};
+
 const E: Provenance = 'empty';
 
 const EMPTY_PRODUCT_PROV = { used: E, duration: E, helped: E, side_effects: E } as const;
@@ -159,6 +171,10 @@ export function computeCompleteness(
 interface IntakeState {
   form: IntakeForm;
   provenance: ProvenanceMap;
+  /** Q12 gateway: has the patient used any hair products/treatments at home? */
+  productsGateway: boolean | null;
+  /** Q13 gateway: has the patient had any in-clinic hair procedures? */
+  proceduresGateway: boolean | null;
 }
 
 interface IntakeActions {
@@ -184,6 +200,17 @@ interface IntakeActions {
     prov: Provenance
   ) => void;
 
+  /**
+   * Answer the Q12 gateway ("used any products at home?"). Resets every
+   * product row to used:false so a "no" answer is immediately a complete,
+   * submittable Q12 — a "yes" answer leaves the same false baseline for the
+   * follow-up row picker to flip individual rows on.
+   */
+  setProductsGateway: (value: boolean | null) => void;
+
+  /** Same as setProductsGateway, for the Q13 procedures gateway. */
+  setProceduresGateway: (value: boolean | null) => void;
+
   /** Returns a clean IntakeForm object with no provenance metadata. */
   getFilledForm: () => IntakeForm;
 
@@ -201,6 +228,7 @@ export const useIntakeStore = create<IntakeStore>()(
     (set, get) => ({
       form: EMPTY_FORM,
       provenance: EMPTY_PROVENANCE,
+      ...EMPTY_GATEWAYS,
 
       setField: (key, value, prov) =>
         set(state => ({
@@ -256,11 +284,91 @@ export const useIntakeStore = create<IntakeStore>()(
           },
         })),
 
+      setProductsGateway: value =>
+        set(state => {
+          if (value === null) {
+            return {
+              productsGateway: null,
+              form: { ...state.form, products: { ...EMPTY_FORM.products } },
+              provenance: { ...state.provenance, products: { ...EMPTY_PROVENANCE.products } },
+            };
+          }
+          const falseRow = (): ProductEntry => ({
+            used: false,
+            duration: null,
+            helped: null,
+            side_effects: null,
+          });
+          const falseRowProv = () => ({
+            used: 'tapped' as Provenance,
+            duration: E,
+            helped: E,
+            side_effects: E,
+          });
+          return {
+            productsGateway: value,
+            form: {
+              ...state.form,
+              products: {
+                otc_medicated_shampoos: falseRow(),
+                hair_oils_serums: falseRow(),
+                topical_minoxidil: falseRow(),
+                oral_minoxidil: falseRow(),
+                supplements: falseRow(),
+              },
+            },
+            provenance: {
+              ...state.provenance,
+              products: {
+                otc_medicated_shampoos: falseRowProv(),
+                hair_oils_serums: falseRowProv(),
+                topical_minoxidil: falseRowProv(),
+                oral_minoxidil: falseRowProv(),
+                supplements: falseRowProv(),
+              },
+            },
+          };
+        }),
+
+      setProceduresGateway: value =>
+        set(state => {
+          if (value === null) {
+            return {
+              proceduresGateway: null,
+              form: { ...state.form, procedures: { ...EMPTY_FORM.procedures } },
+              provenance: { ...state.provenance, procedures: { ...EMPTY_PROVENANCE.procedures } },
+            };
+          }
+          const falseRow = (): ProcedureEntry => ({ done: false, sessions: null, helped: null });
+          const falseRowProv = () => ({ done: 'tapped' as Provenance, sessions: E, helped: E });
+          return {
+            proceduresGateway: value,
+            form: {
+              ...state.form,
+              procedures: {
+                prp_gfc_iprf: falseRow(),
+                stem_cells_exosomes: falseRow(),
+                hair_transplant: falseRow(),
+                other: falseRow(),
+              },
+            },
+            provenance: {
+              ...state.provenance,
+              procedures: {
+                prp_gfc_iprf: falseRowProv(),
+                stem_cells_exosomes: falseRowProv(),
+                hair_transplant: falseRowProv(),
+                other: falseRowProv(),
+              },
+            },
+          };
+        }),
+
       getFilledForm: () => get().form,
 
       getCompleteness: () => computeCompleteness(get().form, get().provenance),
 
-      reset: () => set({ form: EMPTY_FORM, provenance: EMPTY_PROVENANCE }),
+      reset: () => set({ form: EMPTY_FORM, provenance: EMPTY_PROVENANCE, ...EMPTY_GATEWAYS }),
     }),
     {
       name: 'genoroot-intake',
